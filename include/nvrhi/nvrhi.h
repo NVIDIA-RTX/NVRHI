@@ -921,7 +921,7 @@ namespace nvrhi
     enum class BlendOp : uint8_t
     {
         Add = 1,
-        Subrtact = 2,
+        Subtract = 2,
         ReverseSubtract = 3,
         Min = 4,
         Max = 5

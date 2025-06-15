@@ -104,7 +104,7 @@ namespace nvrhi::d3d12
         {
         case BlendOp::Add:
             return D3D12_BLEND_OP_ADD;
-        case BlendOp::Subrtact:
+        case BlendOp::Subtract:
             return D3D12_BLEND_OP_SUBTRACT;
         case BlendOp::ReverseSubtract:
             return D3D12_BLEND_OP_REV_SUBTRACT;

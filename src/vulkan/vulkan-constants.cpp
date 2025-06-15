@@ -690,7 +690,7 @@ namespace nvrhi::vulkan
             case BlendOp::Add:
                 return vk::BlendOp::eAdd;
 
-            case BlendOp::Subrtact:
+            case BlendOp::Subtract:
                 return vk::BlendOp::eSubtract;
 
             case BlendOp::ReverseSubtract:
