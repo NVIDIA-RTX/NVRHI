@@ -338,7 +338,7 @@ namespace nvrhi::vulkan
 
         m_Context.nameVKObject(texture->image, vk::ObjectType::eImage, vk::DebugReportObjectTypeEXT::eImage, desc.debugName.c_str());
 
-        if (!desc.isVirtual)
+        if (!desc.isVirtual && !desc.isTiled)
         {
             res = m_Allocator.allocateTextureMemory(texture);
             ASSERT_VK_OK(res);
