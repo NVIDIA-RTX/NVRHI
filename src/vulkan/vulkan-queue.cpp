@@ -25,6 +25,7 @@
 
 namespace nvrhi::vulkan
 {
+    extern vk::ImageAspectFlags guessImageAspectFlags(vk::Format format);
 
     TrackedCommandBuffer::~TrackedCommandBuffer()
     {
@@ -190,6 +191,34 @@ namespace nvrhi::vulkan
         std::vector<vk::SparseImageMemoryBind> sparseImageMemoryBinds;
         std::vector<vk::SparseMemoryBind> sparseMemoryBinds;
 
+        vk::ImageCreateInfo& imageInfo = texture->imageInfo;
+		vk::ImageAspectFlags textureAspectFlags = guessImageAspectFlags(imageInfo.format);
+
+		// Required for extent and offset since they must be multiples of the tile dimensions
+		uint32_t tileWidth = 1;
+		uint32_t tileHeight = 1;
+		uint32_t tileDepth = 1;
+
+        // Mip tail info, required for resource offset
+        vk::DeviceSize imageMipTailOffset = 0;
+        vk::DeviceSize imageMipTailStride = 1;
+
+        std::vector<vk::SparseImageFormatProperties> formatProperties = m_Context.physicalDevice.getSparseImageFormatProperties(imageInfo.format, imageInfo.imageType, imageInfo.samples, imageInfo.usage, imageInfo.tiling);
+		std::vector<vk::SparseImageMemoryRequirements> memoryRequirements = m_Context.device.getImageSparseMemoryRequirements(texture->image);
+
+		if (!formatProperties.empty())
+		{
+			tileWidth = formatProperties[0].imageGranularity.width;
+			tileHeight = formatProperties[0].imageGranularity.height;
+			tileDepth = formatProperties[0].imageGranularity.depth;
+		}
+
+        if (!memoryRequirements.empty())
+        {
+			imageMipTailOffset = memoryRequirements[0].imageMipTailOffset;
+			imageMipTailStride = memoryRequirements[0].imageMipTailStride;
+        }
+
         for (size_t i = 0; i < numTileMappings; i++)
         {
             uint32_t numRegions = tileMappings[i].numTextureRegions;
@@ -204,7 +233,7 @@ namespace nvrhi::vulkan
                 if (tiledTextureRegion.tilesNum)
                 {
                     sparseMemoryBinds.push_back(vk::SparseMemoryBind()
-                        .setResourceOffset(0)
+                        .setResourceOffset(imageMipTailOffset + tiledTextureCoordinate.arrayLevel * imageMipTailOffset)
                         .setSize(tiledTextureRegion.tilesNum * texture->tileByteSize)
                         .setMemory(deviceMemory)
                         .setMemoryOffset(deviceMemory ? tileMappings[i].byteOffsets[j] : 0));
@@ -214,16 +243,17 @@ namespace nvrhi::vulkan
                     vk::ImageSubresource subresource = {};
                     subresource.arrayLayer = tiledTextureCoordinate.arrayLevel;
                     subresource.mipLevel = tiledTextureCoordinate.mipLevel;
+					subresource.aspectMask = textureAspectFlags; // Required for sparse binding
 
                     vk::Offset3D offset3D;
-                    offset3D.x = tiledTextureCoordinate.x;
-                    offset3D.y = tiledTextureCoordinate.y;
-                    offset3D.z = tiledTextureCoordinate.z;
+                    offset3D.x = tiledTextureCoordinate.x * tileWidth;
+                    offset3D.y = tiledTextureCoordinate.y * tileHeight;
+                    offset3D.z = tiledTextureCoordinate.z * tileHeight;
 
                     vk::Extent3D extent3D;
-                    extent3D.width = tiledTextureRegion.width;
-                    extent3D.height = tiledTextureRegion.height;
-                    extent3D.depth = tiledTextureRegion.depth;
+                    extent3D.width = tiledTextureRegion.width * tileWidth;
+                    extent3D.height = tiledTextureRegion.height * tileHeight;
+                    extent3D.depth = tiledTextureRegion.depth * tileDepth;
 
                     sparseImageMemoryBinds.push_back(vk::SparseImageMemoryBind()
                         .setSubresource(subresource)

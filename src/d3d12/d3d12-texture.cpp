@@ -643,7 +643,7 @@ namespace nvrhi::d3d12
 
         viewDesc.Format = getDxgiFormatMapping(format == Format::UNKNOWN ? desc.format : format).srvFormat;
 
-        switch (desc.dimension)
+        switch (dimension)
         {
         case TextureDimension::Texture1D:
             viewDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE1D;

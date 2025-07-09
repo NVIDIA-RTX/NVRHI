@@ -1134,7 +1134,7 @@ namespace nvrhi::d3d12
                         setResourceStatesForBindingSet(bindingSet);
                     }
                 }
-                else if (updateThisSet)
+                else if (rootParameterOffset != c_InvalidRootParameterIndex)
                 {
                     DescriptorTable* descriptorTable = checked_cast<DescriptorTable*>(_bindingSet);
 
