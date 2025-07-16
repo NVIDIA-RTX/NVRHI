@@ -11,6 +11,10 @@ project "NVRHI-Vulkan"
 		"include/nvrhi/vulkan.h",
 		"src/vulkan/**.h",
 		"src/vulkan/**.cpp",
+
+		"rtxmu/src/VkAccelStructManager.cpp",
+		"rtxmu/src/VulkanSuballocator.cpp",
+		"rtxmu/src/Logger.cpp"
 	}
 	
 	defines {
@@ -103,6 +107,10 @@ project "NVRHI-D3D12"
 
 		"src/d3d12/**.h",
 		"src/d3d12/**.cpp",
+
+		"rtxmu/src/D3D12AccelStructManager.cpp",
+		"rtxmu/src/D3D12Suballocator.cpp",
+		"rtxmu/src/Logger.cpp"
 	}
 	
 	defines {
@@ -112,6 +120,7 @@ project "NVRHI-D3D12"
 
 	includedirs {
 		"include",
+		"thirdparty/DirectX-Headers/include",
 
 		"rtxmu/include",
 	}
@@ -143,7 +152,7 @@ project "NVRHI"
 		"include/nvrhi/utils.h",
 
 		"include/nvrhi/common/**.h",
-		"src/nvrhi/common/**.cpp",
+		"src/common/**.cpp",
 
 		"src/validation/**.h",
 		"src/validation/**.cpp",
