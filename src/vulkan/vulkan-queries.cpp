@@ -149,7 +149,10 @@ namespace nvrhi::vulkan
     {
         TimerQuery* query = checked_cast<TimerQuery*>(_query);
 
-        assert(query->started);
+		if (!query->started)
+		{
+			return false;
+		}
 
         if (query->resolved)
         {
