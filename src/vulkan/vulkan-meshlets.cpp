@@ -249,7 +249,7 @@ namespace nvrhi::vulkan
 
         if (m_EnableAutomaticBarriers)
         {
-            trackResourcesAndBarriers(state);
+            insertMeshletResourceBarriers(state);
         }
 
         bool anyBarriers = this->anyBarriers();

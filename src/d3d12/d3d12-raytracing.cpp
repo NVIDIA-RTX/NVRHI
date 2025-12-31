@@ -1663,6 +1663,7 @@ namespace nvrhi::d3d12
         m_CurrentGraphicsStateValid = false;
         m_CurrentRayTracingStateValid = true;
         m_CurrentRayTracingState = state;
+        m_BindingStatesDirty = false;
 
         commitBarriers();
     }
@@ -1698,6 +1699,7 @@ namespace nvrhi::d3d12
             requireBufferState(desc.perOmmDescs, ResourceStates::OpacityMicromapBuildInput);
 
             requireBufferState(omm->dataBuffer, nvrhi::ResourceStates::OpacityMicromapWrite);
+            m_BindingStatesDirty = true;
         }
 
         if (desc.trackLiveness)
@@ -1874,6 +1876,10 @@ namespace nvrhi::d3d12
 #endif
         }
 
+        if (m_EnableAutomaticBarriers)
+        {
+            m_BindingStatesDirty = true;
+        }
         commitBarriers();
 
         D3D12BuildRaytracingAccelerationStructureInputs inputs;
@@ -1988,6 +1994,7 @@ namespace nvrhi::d3d12
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -2169,6 +2176,7 @@ namespace nvrhi::d3d12
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -2189,6 +2197,7 @@ namespace nvrhi::d3d12
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
             requireBufferState(instanceBuffer, nvrhi::ResourceStates::AccelStructBuildInput);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -2265,6 +2274,7 @@ namespace nvrhi::d3d12
                 requireBufferState(outAccelerationStructuresBuffer, ResourceStates::AccelStructWrite);
             if (outSizesBuffer)
                 requireBufferState(outSizesBuffer, ResourceStates::UnorderedAccess);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 

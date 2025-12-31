@@ -248,6 +248,7 @@ namespace nvrhi::vulkan
         {
             requireBufferState(src, ResourceStates::CopySource);
             requireBufferState(dest, ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -473,6 +474,7 @@ namespace nvrhi::vulkan
             if (m_EnableAutomaticBarriers)
             {
                 requireBufferState(buffer, ResourceStates::CopyDest);
+                m_BindingStatesDirty = true;
             }
             commitBarriers();
 
@@ -513,6 +515,7 @@ namespace nvrhi::vulkan
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(buffer, ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 

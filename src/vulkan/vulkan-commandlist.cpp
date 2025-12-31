@@ -165,8 +165,12 @@ namespace nvrhi::vulkan
             if (desc.src.buffer == nullptr || desc.dst.buffer == nullptr)
                 continue;
             
-            requireBufferState(desc.src.buffer, ResourceStates::ConvertCoopVecMatrixInput);
-            requireBufferState(desc.dst.buffer, ResourceStates::ConvertCoopVecMatrixOutput);
+            if (m_EnableAutomaticBarriers)
+            {
+                requireBufferState(desc.src.buffer, ResourceStates::ConvertCoopVecMatrixInput);
+                requireBufferState(desc.dst.buffer, ResourceStates::ConvertCoopVecMatrixOutput);
+                m_BindingStatesDirty = true;
+            }
             
             vk::ConvertCooperativeVectorMatrixInfoNV& vkDesc = vkConvertDescs.emplace_back();
             vkDesc.sType = vk::StructureType::eConvertCooperativeVectorMatrixInfoNV;

@@ -787,6 +787,7 @@ namespace nvrhi::vulkan
         static_vector<Buffer*, c_MaxVolatileConstantBuffersPerLayout> volatileConstantBuffers;
 
         std::vector<uint16_t> bindingsThatNeedTransitions;
+        bool hasUavBindings = false;
 
         explicit BindingSet(const VulkanContext& context)
             : m_Context(context)
@@ -1317,6 +1318,7 @@ namespace nvrhi::vulkan
         MeshletState m_CurrentMeshletState{};
         rt::State m_CurrentRayTracingState;
         bool m_AnyVolatileBufferWrites = false;
+        bool m_BindingStatesDirty = false;
 
         struct ShaderTableState
         {
@@ -1339,8 +1341,11 @@ namespace nvrhi::vulkan
         void beginRenderPass(nvrhi::IFramebuffer* framebuffer);
         void endRenderPass();
 
-        void trackResourcesAndBarriers(const GraphicsState& state);
-        void trackResourcesAndBarriers(const MeshletState& state);
+        void insertGraphicsResourceBarriers(const GraphicsState& state);
+        void insertComputeResourceBarriers(const ComputeState& state);
+        void insertMeshletResourceBarriers(const MeshletState& state);
+        void insertRayTracingResourceBarriers(const rt::State& state);
+        void insertResourceBarriersForBindingSets(const BindingSetVector& newBindings, const BindingSetVector& oldBindings);
         
         void writeVolatileBuffer(Buffer* buffer, const void* data, size_t dataSize);
         void flushVolatileBufferWrites();

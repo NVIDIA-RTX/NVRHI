@@ -1080,6 +1080,7 @@ namespace nvrhi::d3d12
         bool m_CurrentComputeStateValid = false;
         bool m_CurrentMeshletStateValid = false;
         bool m_CurrentRayTracingStateValid = false;
+        bool m_BindingStatesDirty = false;
 
         // Cache for internal state
 
