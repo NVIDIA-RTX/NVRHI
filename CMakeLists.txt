@@ -39,12 +39,6 @@ option(NVRHI_WITH_RTXMU "Use RTXMU for acceleration structure management" OFF)
 option(NVRHI_WITH_AFTERMATH "Include Aftermath support (requires NSight Aftermath SDK)" OFF)
 
 cmake_dependent_option(NVRHI_WITH_NVAPI "Include NVAPI support (requires NVAPI SDK)" OFF "WIN32" OFF)
-cmake_dependent_option(NVRHI_WITH_DX11 "Build the NVRHI D3D11 backend" ON "WIN32" OFF)
-cmake_dependent_option(NVRHI_WITH_DX12 "Build the NVRHI D3D12 backend" ON "WIN32" OFF)
-
-if(NVRHI_WITH_DX12)
-    option(NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP "Use D3D12 native Opacity Micromaps from DXR 1.2" OFF)
-endif()
 
 if (NVRHI_BUILD_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -65,10 +59,6 @@ if (NVRHI_WITH_VULKAN AND NOT TARGET Vulkan-Headers AND NOT TARGET Vulkan::Heade
     add_subdirectory(thirdparty/Vulkan-Headers)
 endif()
 
-if(NVRHI_WITH_DX12 AND NOT TARGET DirectX-Headers AND NOT TARGET Microsoft::DirectX-Headers)
-    add_subdirectory(thirdparty/DirectX-Headers)
-endif()
-
 if (NVRHI_WITH_RTXMU)
     if (TARGET Vulkan-Headers)
         get_target_property(RTXMU_VULKAN_INCLUDE_DIR Vulkan-Headers INTERFACE_INCLUDE_DIRECTORIES)
@@ -77,7 +67,6 @@ if (NVRHI_WITH_RTXMU)
     endif()
 
     option(RTXMU_WITH_VULKAN "" ${NVRHI_WITH_VULKAN})
-    option(RTXMU_WITH_D3D12 "" ${NVRHI_WITH_DX12})
 
     add_subdirectory(rtxmu)
 endif()
@@ -228,75 +217,6 @@ target_compile_definitions(nvrhi PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WIT
 
 # implementations
 
-if (NVRHI_WITH_DX11)
-    if (NVRHI_BUILD_SHARED)
-        set(nvrhi_d3d11_target nvrhi)
-
-        target_sources(${nvrhi_d3d11_target} PRIVATE
-            ${include_d3d11}
-            ${src_d3d11})
-    else()
-        set(nvrhi_d3d11_target nvrhi_d3d11)
-
-        add_library(${nvrhi_d3d11_target} STATIC
-            ${include_d3d11}
-            ${src_d3d11})
-
-        set_target_properties(${nvrhi_d3d11_target} PROPERTIES FOLDER "NVRHI")
-        target_include_directories(${nvrhi_d3d11_target} PRIVATE include)
-    endif()
-
-    target_link_libraries(${nvrhi_d3d11_target} PUBLIC d3d11 dxguid)
-
-    if (NVRHI_WITH_NVAPI)
-        target_link_libraries(${nvrhi_d3d11_target} PUBLIC nvapi)
-    endif()
-    target_compile_definitions(${nvrhi_d3d11_target} PRIVATE NVRHI_D3D11_WITH_NVAPI=$<BOOL:${NVRHI_WITH_NVAPI}>)
-
-    if (NVRHI_WITH_AFTERMATH)
-        target_link_libraries(${nvrhi_d3d11_target} PUBLIC aftermath)
-    endif()
-    target_compile_definitions(${nvrhi_d3d11_target} PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WITH_AFTERMATH}>)
-endif()
-
-if (NVRHI_WITH_DX12)
-    if (NVRHI_BUILD_SHARED)
-        set(nvrhi_d3d12_target nvrhi)
-
-        target_sources(${nvrhi_d3d12_target} PRIVATE
-            ${include_d3d12}
-            ${src_d3d12})
-    else()
-        set(nvrhi_d3d12_target nvrhi_d3d12)
-
-        add_library(${nvrhi_d3d12_target} STATIC
-            ${include_d3d12}
-            ${src_d3d12})
-
-        set_target_properties(${nvrhi_d3d12_target} PROPERTIES FOLDER "NVRHI")
-        target_include_directories(${nvrhi_d3d12_target} PRIVATE include)
-    endif()
-
-    if (NVRHI_WITH_RTXMU)
-        target_compile_definitions(${nvrhi_d3d12_target} PUBLIC NVRHI_WITH_RTXMU=1)
-        target_link_libraries(${nvrhi_d3d12_target} PUBLIC rtxmu)
-    endif()
-
-    target_compile_definitions(${nvrhi_d3d12_target} PRIVATE NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP=$<BOOL:${NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP}>)
-
-    target_link_libraries(${nvrhi_d3d12_target} PUBLIC Microsoft::DirectX-Headers Microsoft::DirectX-Guids d3d12)
-
-    if (NVRHI_WITH_NVAPI)
-        target_link_libraries(${nvrhi_d3d12_target} PUBLIC nvapi)
-    endif()
-    target_compile_definitions(${nvrhi_d3d12_target} PRIVATE NVRHI_D3D12_WITH_NVAPI=$<BOOL:${NVRHI_WITH_NVAPI}>)
-
-    if (NVRHI_WITH_AFTERMATH)
-        target_link_libraries(${nvrhi_d3d12_target} PUBLIC aftermath)
-    endif()
-    target_compile_definitions(${nvrhi_d3d12_target} PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WITH_AFTERMATH}>)
-endif()
-
 if (NVRHI_WITH_VULKAN)
     if (NVRHI_BUILD_SHARED)
         set(nvrhi_vulkan_target nvrhi)
@@ -349,13 +269,6 @@ if (NVRHI_INSTALL)
         LIBRARY DESTINATION lib)
 
     if (NOT NVRHI_BUILD_SHARED)
-        if (NVRHI_WITH_DX11)
-            install(TARGETS ${nvrhi_d3d11_target} DESTINATION "lib" EXPORT "nvrhiTargets")
-        endif()
-
-        if (NVRHI_WITH_DX12)
-            install(TARGETS ${nvrhi_d3d12_target} DESTINATION "lib" EXPORT "nvrhiTargets")
-        endif()
 
         if (NVRHI_WITH_VULKAN)
             install(TARGETS ${nvrhi_vulkan_target} DESTINATION "lib" EXPORT "nvrhiTargets")
