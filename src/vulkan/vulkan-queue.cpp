@@ -118,7 +118,7 @@ namespace nvrhi::vulkan
         m_SignalSemaphoreValues.push_back(value);
     }
 
-    uint64_t Queue::submit(ICommandList* const* ppCmd, size_t numCmd)
+    uint64_t Queue::submit(ICommandList* const* ppCmd, size_t numCmd, vk::Fence signalFence)
     {
         std::vector<vk::PipelineStageFlags> waitStageArray(m_WaitSemaphores.size());
         std::vector<vk::CommandBuffer> commandBuffers(numCmd);
@@ -169,7 +169,7 @@ namespace nvrhi::vulkan
             .setPSignalSemaphores(m_SignalSemaphores.data());
 
         try {
-            m_Queue.submit(submitInfo);
+            m_Queue.submit(submitInfo, signalFence);
         }
         catch (vk::DeviceLostError&)
         {

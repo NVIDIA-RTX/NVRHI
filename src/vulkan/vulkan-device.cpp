@@ -33,6 +33,11 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace nvrhi::vulkan
 {
+    uint64_t IDevice::executeCommandListSignalFence(ICommandList *pCommandList, VkFence signalFence,
+        CommandQueue executionQueue) {
+        return executeCommandListsSignalFence(&pCommandList, 1, signalFence, executionQueue);
+    }
+
     DeviceHandle createDevice(const DeviceDesc& desc)
     {
 #if defined(NVRHI_SHARED_LIBRARY_BUILD)
@@ -572,9 +577,14 @@ namespace nvrhi::vulkan
     
     uint64_t Device::executeCommandLists(ICommandList* const* pCommandLists, size_t numCommandLists, CommandQueue executionQueue)
     {
+        return executeCommandListsSignalFence(pCommandLists, numCommandLists, nullptr, executionQueue);
+    }
+
+    uint64_t Device::executeCommandListsSignalFence(ICommandList * const *pCommandLists, size_t numCommandLists,
+        VkFence signalFence, CommandQueue executionQueue) {
         Queue& queue = *m_Queues[uint32_t(executionQueue)];
 
-        uint64_t submissionID = queue.submit(pCommandLists, numCommandLists);
+        uint64_t submissionID = queue.submit(pCommandLists, numCommandLists, signalFence);
 
         for (size_t i = 0; i < numCommandLists; i++)
         {

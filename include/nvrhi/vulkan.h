@@ -25,7 +25,7 @@
 #include <vulkan/vulkan.h>
 #include <nvrhi/nvrhi.h>
 
-namespace nvrhi 
+namespace nvrhi
 {
     namespace ObjectTypes
     {
@@ -43,6 +43,9 @@ namespace nvrhi::vulkan
         virtual void queueWaitForSemaphore(CommandQueue waitQueue, VkSemaphore semaphore, uint64_t value) = 0;
         virtual void queueSignalSemaphore(CommandQueue executionQueue, VkSemaphore semaphore, uint64_t value) = 0;
         virtual uint64_t queueGetCompletedInstance(CommandQueue queue) = 0;
+
+        virtual uint64_t executeCommandListsSignalFence(ICommandList* const* pCommandLists, size_t numCommandLists, VkFence signalFence = nullptr, CommandQueue executionQueue = CommandQueue::Graphics) = 0;
+        uint64_t executeCommandListSignalFence(ICommandList* pCommandList, VkFence signalFence = nullptr, CommandQueue executionQueue = CommandQueue::Graphics);
     };
 
     typedef RefCountPtr<IDevice> DeviceHandle;
@@ -67,7 +70,7 @@ namespace nvrhi::vulkan
 
         const char **instanceExtensions = nullptr;
         size_t numInstanceExtensions = 0;
-        
+
         const char **deviceExtensions = nullptr;
         size_t numDeviceExtensions = 0;
 
@@ -82,7 +85,7 @@ namespace nvrhi::vulkan
     };
 
     NVRHI_API DeviceHandle createDevice(const DeviceDesc& desc);
-   
+
     NVRHI_API VkFormat convertFormat(nvrhi::Format format);
 
     NVRHI_API const char* resultToString(VkResult result);
