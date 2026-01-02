@@ -536,7 +536,7 @@ namespace nvrhi
         // see the bottom of this file for a specialization of std::hash<TextureSubresourceSet>
     };
 
-    static const TextureSubresourceSet AllSubresources = TextureSubresourceSet(0, TextureSubresourceSet::AllMipLevels, 0, TextureSubresourceSet::AllArraySlices);
+    inline const TextureSubresourceSet AllSubresources = TextureSubresourceSet(0, TextureSubresourceSet::AllMipLevels, 0, TextureSubresourceSet::AllArraySlices);
 
     class ITexture : public IResource
     {
