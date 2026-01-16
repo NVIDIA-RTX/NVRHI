@@ -155,13 +155,21 @@ namespace nvrhi::d3d12
         return pipelineState;
     }
 
-    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc& desc, IFramebuffer* fb)
+    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc& desc, FramebufferInfo const& fbinfo)
     {
         RefCountPtr<RootSignature> pRS = getRootSignature(desc.bindingLayouts, false);
 
-        RefCountPtr<ID3D12PipelineState> pPSO = createPipelineState(desc, pRS, fb->getFramebufferInfo());
+        RefCountPtr<ID3D12PipelineState> pPSO = createPipelineState(desc, pRS, fbinfo);
 
-        return createHandleForNativeMeshletPipeline(pRS, pPSO, desc, fb->getFramebufferInfo());
+        return createHandleForNativeMeshletPipeline(pRS, pPSO, desc, fbinfo);
+    }
+
+    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc& desc, IFramebuffer* fb)
+    {
+        if (!fb)
+            return nullptr;
+            
+        return createMeshletPipeline(desc, fb->getFramebufferInfo());
     }
 
 	nvrhi::MeshletPipelineHandle Device::createHandleForNativeMeshletPipeline(IRootSignature* rootSignature, ID3D12PipelineState* pipelineState, const MeshletPipelineDesc& desc, const FramebufferInfo& framebufferInfo)
@@ -265,6 +273,11 @@ namespace nvrhi::d3d12
             m_Instance->referencedResources.push_back(framebuffer);
         }
 
+        if (m_EnableAutomaticBarriers && framebuffer && (m_BindingStatesDirty || updateFramebuffer))
+        {
+            setResourceStatesForFramebuffer(framebuffer);
+        }
+        
         setGraphicsBindings(state.bindings, bindingUpdateMask, state.indirectParams, updateIndirectParams, pso->rootSignature);
         
         commitBarriers();
@@ -292,6 +305,7 @@ namespace nvrhi::d3d12
         m_CurrentRayTracingStateValid = false;
         m_CurrentMeshletState = state;
         m_CurrentMeshletState.dynamicStencilRefValue = effectiveStencilRefValue;
+        m_BindingStatesDirty = false;
     }
 
     void CommandList::dispatchMesh(uint32_t groupsX, uint32_t groupsY /*= 1*/, uint32_t groupsZ /*= 1*/)

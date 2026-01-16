@@ -91,6 +91,8 @@ namespace nvrhi::vulkan
         clearState();
 
         flushVolatileBufferWrites();
+        
+        m_UncachedShaderTableStates.clear();
     }
 
     void CommandList::clearState()
@@ -104,7 +106,6 @@ namespace nvrhi::vulkan
         m_CurrentComputeState = ComputeState();
         m_CurrentMeshletState = MeshletState();
         m_CurrentRayTracingState = rt::State();
-        m_CurrentShaderTablePointers = ShaderTableState();
 
         m_AnyVolatileBufferWrites = false;
 
@@ -143,5 +144,62 @@ namespace nvrhi::vulkan
 
         m_VolatileBufferStates.clear();
     }
-    
+ 
+    void CommandList::convertCoopVecMatrices(coopvec::ConvertMatrixLayoutDesc const* convertDescs, size_t numDescs)
+    {
+        if (!m_Context.extensions.NV_cooperative_vector)
+            return;
+
+        if (numDescs == 0)
+            return;
+
+        std::vector<vk::ConvertCooperativeVectorMatrixInfoNV> vkConvertDescs;
+        vkConvertDescs.reserve(numDescs);
+
+        std::vector<size_t> dstSizes;
+        dstSizes.reserve(numDescs);
+
+        for (size_t i = 0; i < numDescs; i++)
+        {
+            coopvec::ConvertMatrixLayoutDesc const& desc = convertDescs[i];
+
+            if (desc.src.buffer == nullptr || desc.dst.buffer == nullptr)
+                continue;
+            
+            if (m_EnableAutomaticBarriers)
+            {
+                requireBufferState(desc.src.buffer, ResourceStates::ConvertCoopVecMatrixInput);
+                requireBufferState(desc.dst.buffer, ResourceStates::ConvertCoopVecMatrixOutput);
+                m_BindingStatesDirty = true;
+            }
+            
+            vk::ConvertCooperativeVectorMatrixInfoNV& vkDesc = vkConvertDescs.emplace_back();
+            vkDesc.sType = vk::StructureType::eConvertCooperativeVectorMatrixInfoNV;
+            vkDesc.srcSize = desc.src.size;
+            vkDesc.srcData.deviceAddress = desc.src.buffer->getGpuVirtualAddress() + desc.src.offset;
+            vkDesc.pDstSize = &dstSizes.emplace_back(desc.dst.size);
+            vkDesc.dstData.deviceAddress = desc.dst.buffer->getGpuVirtualAddress() + desc.dst.offset;
+            vkDesc.srcComponentType = convertCoopVecDataType(desc.src.type);
+            vkDesc.dstComponentType = convertCoopVecDataType(desc.dst.type);
+            vkDesc.numRows = desc.numRows;
+            vkDesc.numColumns = desc.numColumns;
+
+            vkDesc.srcLayout = convertCoopVecMatrixLayout(desc.src.layout);
+            vkDesc.srcStride = desc.src.stride != 0
+                ? desc.src.stride
+                : nvrhi::coopvec::getOptimalMatrixStride(desc.src.type, desc.src.layout, desc.numRows, desc.numColumns);
+
+            vkDesc.dstLayout = convertCoopVecMatrixLayout(desc.dst.layout);
+            vkDesc.dstStride = desc.dst.stride != 0
+                ? desc.dst.stride
+                : nvrhi::coopvec::getOptimalMatrixStride(desc.dst.type, desc.dst.layout, desc.numRows, desc.numColumns);
+        }
+
+        commitBarriers();
+
+        if (!vkConvertDescs.empty())
+        {
+            m_CurrentCmdBuf->cmdBuf.convertCooperativeVectorMatrixNV(vkConvertDescs);
+        }
+    }
 }

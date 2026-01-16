@@ -84,6 +84,13 @@ nvrhi::TextureHandle swapChainTexture = nvrhiDevice->createHandleForNativeTextur
 
 Now, the `swapChainTexture` variable holds a strong reference to the swap chain texture. It can be used to create a `Framebuffer` object to be rendered into.
 
+```c++
+auto framebufferDesc = nvrhi::FramebufferDesc()
+    .addColorAttachment(swapChainTexture); // you can specify a particular subresource if necessary
+
+nvrhi::FramebufferHandle framebuffer = nvrhiDevice->createFramebuffer(framebufferDesc);
+```
+
 On D3D12 and Vulkan, multiple swap chain textures and explicit access synchronization is necessary; this is out of scope for this article, and working implementations can be found in the `DeviceManager` classes in Donut: [D3D11](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/dx11/DeviceManager_DX11.cpp), [D3D12](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/dx12/DeviceManager_DX12.cpp), [Vulkan](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/vulkan/DeviceManager_VK.cpp).
 
 ### Creating a Graphics Pipeline
@@ -127,16 +134,18 @@ nvrhi::ShaderHandle pixelShader = nvrhiDevice->createShader(
     g_PixelShader, sizeof(g_PixelShader));
 ```
 
-In order to create the pipeline, we also need a framebuffer. A framebuffer object is a collection of render targets and optionally a depth target. It is necessary for pipeline creation because D3D12 requires a list of render target formats to create a PSO, and Vulkan requires a render pass that contains the actual framebuffer object.
+In order to create the pipeline, we need to know which render target formats will be used. This information is provided through the `FramebufferInfo` structure:
 
 ```c++
-auto framebufferDesc = nvrhi::FramebufferDesc()
-    .addColorAttachment(swapChainTexture); // you can specify a particular subresource if necessary
-
-nvrhi::FramebufferHandle framebuffer = nvrhiDevice->createFramebuffer(framebufferDesc);
+auto framebufferInfo = nvrhi::FramebufferInfo()
+    .addColorFormat(nvrhi::Format::RGBA8_UNORM);
 ```
 
-Note that on D3D12 and Vulkan, the application sees multiple swap chain images, so there will be multiple framebuffer objects, too. The good news is that while a graphics pipeline needs a framebuffer to be created, it doesn't have to be used with the exact same framebuffer, so there is no need to create a pipeline per swap chain image. The framebuffer used to draw with a particular pipeline only needs to be compatible with the framebuffer used to create the pipeline, which means the `getFramebufferInfo()` functions of the two framebuffers need to return identical structures: that includes the dimensions and the formats of all render targets, and the sample count.
+Alternatively, `FramebufferInfo` can be obtained from a `Framebuffer` object, if one is available at the time of pipeline creation:
+
+```c++
+auto framebufferInfo = framebuffer->getFramebufferInfo();
+```
 
 Finally, the pipeline will need to bind some resources, such as constant buffers and textures. We need to declare which resources will be bound to which shader binding slots using a "binding layout" object. For example, let's say our vertex shader will need the view-projection matrix at constant buffer slot b0, and the pixel shader will need the texture at texture slot t0. We'll declare both items in the same layout, visible to all shader stages for simplicity. If necessary, a pipeline can use multiple layouts with different visibility masks to separate the bindings.
 
@@ -160,7 +169,7 @@ auto pipelineDesc = nvrhi::GraphicsPipelineDesc()
     .setPixelShader(pixelShader)
     .addBindingLayout(bindingLayout);
 
-nvrhi::GraphicsPipelineHandle graphicsPipeline = nvrhiDevice->createGraphicsPipeline(pipelineDesc, framebuffer);
+nvrhi::GraphicsPipelineHandle graphicsPipeline = nvrhiDevice->createGraphicsPipeline(pipelineDesc, framebufferInfo);
 ```
 
 Note that the `PipelineDesc`, `BindingLayoutDesc` and other `*Desc` structures are saved in the objects that were created using them, and can be retrieved using the `getDesc()` method of the corresponding object later.
@@ -194,8 +203,7 @@ static const Vertex g_Vertices[] = {
 auto vertexBufferDesc = nvrhi::BufferDesc()
     .setByteSize(sizeof(g_Vertices))
     .setIsVertexBuffer(true)
-    .setInitialState(nvrhi::ResourceStates::VertexBuffer)
-    .setKeepInitialState(true) // enable fully automatic state tracking
+    .enableAutomaticStateTracking(nvrhi::ResourceStates::VertexBuffer)
     .setDebugName("Vertex Buffer");
 
 nvrhi::BufferHandle vertexBuffer = nvrhiDevice->createBuffer(vertexBufferDesc);
@@ -210,8 +218,7 @@ auto textureDesc = nvrhi::TextureDesc()
     .setWidth(textureWidth)
     .setHeight(textureHeight)
     .setFormat(nvrhi::Format::SRGBA8_UNORM)
-    .setInitialState(nvrhi::ResourceStates::ShaderResource)
-    .setKeepInitialState(true)
+    .enableAutomaticStateTracking(nvrhi::ResourceStates::ShaderResource)
     .setDebugName("Geometry Texture");
 
 nvrhi::TextureHandle geometryTexture = nvrhiDevice->createTexture(textureDesc);

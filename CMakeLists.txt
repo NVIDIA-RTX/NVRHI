@@ -42,13 +42,20 @@ cmake_dependent_option(NVRHI_WITH_NVAPI "Include NVAPI support (requires NVAPI S
 cmake_dependent_option(NVRHI_WITH_DX11 "Build the NVRHI D3D11 backend" ON "WIN32" OFF)
 cmake_dependent_option(NVRHI_WITH_DX12 "Build the NVRHI D3D12 backend" ON "WIN32" OFF)
 
+if(NVRHI_WITH_DX12)
+    option(NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP "Use D3D12 native Opacity Micromaps from DXR 1.2" OFF)
+endif()
+
 if (NVRHI_BUILD_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
 if (MSVC)
     string(REGEX REPLACE "/W[0-4]\\s*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    string(APPEND CMAKE_CXX_FLAGS " /W4 /MP")
+    string(APPEND CMAKE_CXX_FLAGS " /W4")
+    if (NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+        string(APPEND CMAKE_CXX_FLAGS " /MP")
+    endif()
 endif()
 
 
@@ -274,6 +281,8 @@ if (NVRHI_WITH_DX12)
         target_compile_definitions(${nvrhi_d3d12_target} PUBLIC NVRHI_WITH_RTXMU=1)
         target_link_libraries(${nvrhi_d3d12_target} PUBLIC rtxmu)
     endif()
+
+    target_compile_definitions(${nvrhi_d3d12_target} PRIVATE NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP=$<BOOL:${NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP}>)
 
     target_link_libraries(${nvrhi_d3d12_target} PUBLIC Microsoft::DirectX-Headers Microsoft::DirectX-Guids d3d12)
 

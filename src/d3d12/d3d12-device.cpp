@@ -118,6 +118,9 @@ namespace nvrhi::d3d12
         {
             m_RayTracingSupported = m_Options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0;
             m_TraceRayInlineSupported = m_Options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1;
+#if NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP
+            m_OpacityMicromapSupported = m_Options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_2;
+#endif // NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP
 
 #ifdef NVRHI_WITH_RTXMU
             if (m_RayTracingSupported)
@@ -139,6 +142,19 @@ namespace nvrhi::d3d12
         {
             m_SamplerFeedbackSupported = m_Options7.SamplerFeedbackTier >= D3D12_SAMPLER_FEEDBACK_TIER_0_9;
         }
+
+#if NVRHI_D3D12_WITH_COOPVEC
+        if (SUCCEEDED(m_Context.device->QueryInterface(&m_Context.devicePreview)))
+        {
+            D3D12_FEATURE_DATA_D3D12_OPTIONS_EXPERIMENTAL experimentalOptions{};
+            if (SUCCEEDED(m_Context.device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_EXPERIMENTAL,
+                &experimentalOptions, UINT(sizeof experimentalOptions))))
+            {
+                m_CoopVecInferencingSupported = experimentalOptions.CooperativeVectorTier >= D3D12_COOPERATIVE_VECTOR_TIER_1_0;
+                m_CoopVecTrainingSupported = experimentalOptions.CooperativeVectorTier >= D3D12_COOPERATIVE_VECTOR_TIER_1_1;
+            }
+        }
+#endif
 
         if (hasOptions6)
         {
@@ -203,7 +219,11 @@ namespace nvrhi::d3d12
                 m_ShaderExecutionReorderingSupported = (ser & NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD) == NVAPI_D3D12_RAYTRACING_THREAD_REORDERING_CAP_STANDARD;
             }
         }
-
+#if NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP
+    #ifdef NVRHI_WITH_RTXMU
+        m_OpacityMicromapSupported = false; // RTXMU does not support OMMs
+    #endif
+#endif // NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP
 #if NVRHI_WITH_NVAPI_OPACITY_MICROMAP
 #ifdef NVRHI_WITH_RTXMU
         m_OpacityMicromapSupported = false; // RTXMU does not support OMMs
@@ -446,8 +466,7 @@ namespace nvrhi::d3d12
     void Device::getTextureTiling(ITexture* texture, uint32_t* numTiles, PackedMipDesc* desc, TileShape* tileShape, uint32_t* subresourceTilingsNum, SubresourceTiling* _subresourceTilings)
     {
         ID3D12Resource* resource = checked_cast<Texture*>(texture)->resource;
-        D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-
+        
         D3D12_PACKED_MIP_INFO packedMipDesc = {};
         D3D12_TILE_SHAPE standardTileShapeForNonPackedMips = {};
         D3D12_SUBRESOURCE_TILING subresourceTilings[16];
@@ -652,6 +671,10 @@ namespace nvrhi::d3d12
                     utils::NotSupported();
             }
             return true;
+        case Feature::CooperativeVectorInferencing:
+            return m_CoopVecInferencingSupported;
+        case Feature::CooperativeVectorTraining:
+            return m_CoopVecTrainingSupported;  
         default:
             return false;
         }
@@ -703,6 +726,95 @@ namespace nvrhi::d3d12
             result = result | FormatSupport::ShaderUavStore;
 
         return result;
+    }
+
+    coopvec::DeviceFeatures Device::queryCoopVecFeatures()
+    {
+        coopvec::DeviceFeatures result;
+#if NVRHI_D3D12_WITH_COOPVEC
+        // Get the format count
+        D3D12_FEATURE_DATA_COOPERATIVE_VECTOR coopVecData{};
+        if (m_Context.device->CheckFeatureSupport(D3D12_FEATURE_COOPERATIVE_VECTOR,
+            &coopVecData, UINT(sizeof coopVecData)) != S_OK)
+            return result;
+        
+        // Get the supported format list
+        std::vector<D3D12_COOPERATIVE_VECTOR_PROPERTIES_MUL> matMulProperties(coopVecData.MatrixVectorMulAddPropCount);
+        std::vector<D3D12_COOPERATIVE_VECTOR_PROPERTIES_ACCUMULATE> outerProductAccumulateProperties(coopVecData.OuterProductAccumulatePropCount);
+        std::vector<D3D12_COOPERATIVE_VECTOR_PROPERTIES_ACCUMULATE> vectorAccumulateProperties(coopVecData.VectorAccumulatePropCount);
+        coopVecData.pMatrixVectorMulAddProperties = matMulProperties.data();
+        coopVecData.pOuterProductAccumulateProperties = outerProductAccumulateProperties.data();
+        coopVecData.pVectorAccumulateProperties = vectorAccumulateProperties.data();
+        if (m_Context.device->CheckFeatureSupport(D3D12_FEATURE_COOPERATIVE_VECTOR,
+            &coopVecData, UINT(sizeof coopVecData)) != S_OK)
+            return result;
+
+        result.matMulFormats.reserve(matMulProperties.size());
+        for (const auto& prop : matMulProperties)
+        {
+            coopvec::MatMulFormatCombo& combo = result.matMulFormats.emplace_back();
+            combo.inputType = convertCoopVecDataType(prop.InputType);
+            combo.inputInterpretation = convertCoopVecDataType(prop.InputInterpretation);
+            combo.matrixInterpretation = convertCoopVecDataType(prop.MatrixInterpretation);
+            combo.biasInterpretation = convertCoopVecDataType(prop.BiasInterpretation);
+            combo.outputType = convertCoopVecDataType(prop.OutputType);
+            combo.transposeSupported = !!prop.TransposeSupported;
+        }
+
+        bool outerProductFloat16Supported = false;
+        bool outerProductFloat32Supported = false;
+        bool vectorAccumulateFloat16Supported = false;
+        bool vectorAccumulateFloat32Supported = false;
+
+        for (const auto& prop : outerProductAccumulateProperties)
+        {
+            if (prop.AccumulationType == D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT16)
+            {
+                outerProductFloat16Supported = true;
+            }
+            else if (prop.AccumulationType == D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT32)
+            {
+                outerProductFloat32Supported = true;
+            }
+        }
+        for (const auto& prop : vectorAccumulateProperties)
+        {
+            if (prop.AccumulationType == D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT16)
+            {
+                vectorAccumulateFloat16Supported = true;
+            }
+            else if (prop.AccumulationType == D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT32)
+            {
+                vectorAccumulateFloat32Supported = true;
+            }
+        }
+
+        result.trainingFloat16 = outerProductFloat16Supported && vectorAccumulateFloat16Supported;
+        result.trainingFloat32 = outerProductFloat32Supported && vectorAccumulateFloat32Supported;
+#endif
+        return result;
+    }
+
+    size_t Device::getCoopVecMatrixSize(coopvec::DataType type, coopvec::MatrixLayout layout, int rows, int columns)
+    {
+#if NVRHI_D3D12_WITH_COOPVEC
+        D3D12_LINEAR_ALGEBRA_MATRIX_CONVERSION_DEST_INFO destInfo = {};
+        destInfo.DestLayout = convertCoopVecMatrixLayout(layout);
+        destInfo.NumRows = rows;
+        destInfo.NumColumns = columns;
+        destInfo.DestDataType = convertCoopVecDataType(type);
+        destInfo.DestStride = UINT(coopvec::getOptimalMatrixStride(type, layout, rows, columns));
+
+        m_Context.devicePreview->GetLinearAlgebraMatrixConversionDestinationInfo(&destInfo);
+
+        return destInfo.DestSize;
+#else
+        (void)type;
+        (void)layout;
+        (void)rows;
+        (void)columns;
+        return 0;
+#endif
     }
 
     Object Device::getNativeQueue(ObjectType objectType, CommandQueue queue)

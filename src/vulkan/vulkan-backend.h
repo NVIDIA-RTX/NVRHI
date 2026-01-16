@@ -37,21 +37,9 @@
 #include <rtxmu/VkAccelStructManager.h>
 #endif
 
-#if (VK_HEADER_VERSION < 230)
-#error "Vulkan SDK version 1.3.230 or later is required to compile NVRHI"
+#if (VK_HEADER_VERSION < 318)
+#error "Vulkan SDK version 1.4.318 or later is required to compile NVRHI"
 #endif
-
-namespace std
-{
-    template<> struct hash<std::pair<vk::PipelineStageFlags, vk::PipelineStageFlags>>
-    {
-        std::size_t operator()(std::pair<vk::PipelineStageFlags, vk::PipelineStageFlags> const& s) const noexcept
-        {
-            return (std::hash<uint32_t>()(uint32_t(s.first))
-                ^ (std::hash<uint32_t>()(uint32_t(s.second)) << 16));
-        }
-    };
-}
 
 #define CHECK_VK_RETURN(res) if ((res) != vk::Result::eSuccess) { return res; }
 #define CHECK_VK_FAIL(res) if ((res) != vk::Result::eSuccess) { return nullptr; }
@@ -73,7 +61,7 @@ namespace nvrhi::vulkan
     class GraphicsPipeline;
     class ComputePipeline;
     class BindingSet;
-    class EvenetQuery;
+    class EventQuery;
     class TimerQuery;
     class Marker;
     class Device;
@@ -81,28 +69,15 @@ namespace nvrhi::vulkan
     struct ResourceStateMapping
     {
         ResourceStates nvrhiState;
-        vk::PipelineStageFlags stageFlags;
-        vk::AccessFlags accessMask;
-        vk::ImageLayout imageLayout;
-        ResourceStateMapping(ResourceStates nvrhiState, vk::PipelineStageFlags stageFlags, vk::AccessFlags accessMask, vk::ImageLayout imageLayout):
-            nvrhiState(nvrhiState), stageFlags(stageFlags), accessMask(accessMask), imageLayout(imageLayout) {}
-    };
-
-    struct ResourceStateMapping2 // for use with KHR_synchronization2
-    {
-        ResourceStates nvrhiState;
         vk::PipelineStageFlags2 stageFlags;
         vk::AccessFlags2 accessMask;
         vk::ImageLayout imageLayout;
-        ResourceStateMapping2(ResourceStates nvrhiState, vk::PipelineStageFlags2 stageFlags, vk::AccessFlags2 accessMask, vk::ImageLayout imageLayout) :
-            nvrhiState(nvrhiState), stageFlags(stageFlags), accessMask(accessMask), imageLayout(imageLayout) {}
     };
 
     vk::SamplerAddressMode convertSamplerAddressMode(SamplerAddressMode mode);
     vk::PipelineStageFlagBits2 convertShaderTypeToPipelineStageFlagBits(ShaderType shaderType);
     vk::ShaderStageFlagBits convertShaderTypeToShaderStageFlagBits(ShaderType shaderType);
-    ResourceStateMapping convertResourceState(ResourceStates state);
-    ResourceStateMapping2 convertResourceState2(ResourceStates state);
+    ResourceStateMapping convertResourceState(ResourceStates state, bool isImage);
     vk::PrimitiveTopology convertPrimitiveTopology(PrimitiveType topology);
     vk::PolygonMode convertFillMode(RasterFillMode mode);
     vk::CullModeFlagBits convertCullMode(RasterCullMode mode);
@@ -118,6 +93,9 @@ namespace nvrhi::vulkan
     vk::Extent2D convertFragmentShadingRate(VariableShadingRate shadingRate);
     vk::FragmentShadingRateCombinerOpKHR convertShadingRateCombiner(ShadingRateCombiner combiner);
     vk::DescriptorType convertResourceType(ResourceType type);
+    vk::ComponentTypeKHR convertCoopVecDataType(coopvec::DataType type);
+    coopvec::DataType convertCoopVecDataType(vk::ComponentTypeKHR type);
+    vk::CooperativeVectorMatrixLayoutNV convertCoopVecMatrixLayout(coopvec::MatrixLayout layout);
 
     void countSpecializationConstants(
         Shader* shader,
@@ -160,20 +138,22 @@ namespace nvrhi::vulkan
         vk::PipelineCache pipelineCache;
 
         struct {
-            bool KHR_synchronization2 = false;
-            bool KHR_maintenance1 = false;
             bool EXT_debug_report = false;
             bool EXT_debug_marker = false;
             bool KHR_acceleration_structure = false;
             bool buffer_device_address = false; // either KHR_ or Vulkan 1.2 versions
             bool KHR_ray_query = false;
             bool KHR_ray_tracing_pipeline = false;
-            bool NV_mesh_shader = false;
+            bool EXT_mesh_shader = false;
             bool KHR_fragment_shading_rate = false;
             bool EXT_conservative_rasterization = false;
             bool EXT_opacity_micromap = false;
             bool NV_ray_tracing_invocation_reorder = false;
+            bool NV_cluster_acceleration_structure = false;
+            bool EXT_mutable_descriptor_type = false;
             bool EXT_debug_utils = false;
+            bool NV_cooperative_vector = false;
+            bool NV_ray_tracing_linear_swept_spheres = false;
 #if NVRHI_WITH_AFTERMATH
             bool NV_device_diagnostic_checkpoints = false;
             bool NV_device_diagnostics_config= false;
@@ -187,9 +167,14 @@ namespace nvrhi::vulkan
         vk::PhysicalDeviceFragmentShadingRatePropertiesKHR shadingRateProperties;
         vk::PhysicalDeviceOpacityMicromapPropertiesEXT opacityMicromapProperties;
         vk::PhysicalDeviceRayTracingInvocationReorderPropertiesNV nvRayTracingInvocationReorderProperties;
+        vk::PhysicalDeviceClusterAccelerationStructurePropertiesNV nvClusterAccelerationStructureProperties;
         vk::PhysicalDeviceFragmentShadingRateFeaturesKHR shadingRateFeatures;
+        vk::PhysicalDeviceCooperativeVectorFeaturesNV coopVecFeatures;
+        vk::PhysicalDeviceCooperativeVectorPropertiesNV coopVecProperties;
+        vk::PhysicalDeviceRayTracingLinearSweptSpheresFeaturesNV linearSweptSpheresFeatures;
         vk::PhysicalDeviceSubgroupProperties subgroupProperties;
         IMessageCallback* messageCallback = nullptr;
+        bool logBufferLifetime = false;
 #ifdef NVRHI_WITH_RTXMU
         std::unique_ptr<rtxmu::VkAccelStructManager> rtxMemUtil;
         std::unique_ptr<RtxMuResources> rtxMuResources;
@@ -200,6 +185,7 @@ namespace nvrhi::vulkan
             const vk::DebugReportObjectTypeEXT objtypeEXT, const char* name) const;
         void error(const std::string& message) const;
         void warning(const std::string& message) const;
+        void info(const std::string& message) const;
     };
 
     // command buffer with resource tracking
@@ -422,7 +408,7 @@ namespace nvrhi::vulkan
         { }
 
         // returns a subresource view for an arbitrary range of mip levels and array layers.
-        // 'viewtype' only matters when asking for a depthstencil view; in situations where only depth or stencil can be bound
+        // 'viewtype' only matters when asking for a depth-stencil view; in situations where only depth or stencil can be bound
         // (such as an SRV with ImageLayout::eShaderReadOnlyOptimal), but not both, then this specifies which of the two aspect bits is to be set.
         TextureSubresourceView& getSubresourceView(const TextureSubresourceSet& subresources, TextureDimension dimension,
             Format format, vk::ImageUsageFlags usage, TextureSubresourceViewType viewtype = TextureSubresourceViewType::AllAspects);
@@ -718,24 +704,17 @@ namespace nvrhi::vulkan
         FramebufferDesc desc;
         FramebufferInfoEx framebufferInfo;
         
-        vk::RenderPass renderPass = vk::RenderPass();
-        vk::Framebuffer framebuffer = vk::Framebuffer();
+        static_vector<vk::RenderingAttachmentInfo, c_MaxRenderTargets> colorAttachments;
+        vk::RenderingAttachmentInfo depthAttachment{};
+        vk::RenderingAttachmentInfo stencilAttachment{};
+        vk::RenderingFragmentShadingRateAttachmentInfoKHR shadingRateAttachment{};
 
         std::vector<ResourceHandle> resources;
 
         bool managed = true;
 
-        explicit Framebuffer(const VulkanContext& context)
-            : m_Context(context)
-        { }
-
-        ~Framebuffer() override;
         const FramebufferDesc& getDesc() const override { return desc; }
         const FramebufferInfoEx& getFramebufferInfo() const override { return framebufferInfo; }
-        Object getNativeObject(ObjectType objectType) override;
-
-    private:
-        const VulkanContext& m_Context;
     };
 
     class BindingLayout : public RefCounter<IBindingLayout>
@@ -781,6 +760,7 @@ namespace nvrhi::vulkan
         static_vector<Buffer*, c_MaxVolatileConstantBuffersPerLayout> volatileConstantBuffers;
 
         std::vector<uint16_t> bindingsThatNeedTransitions;
+        bool hasUavBindings = false;
 
         explicit BindingSet(const VulkanContext& context)
             : m_Context(context)
@@ -813,7 +793,7 @@ namespace nvrhi::vulkan
         IBindingLayout* getLayout() const override { return layout; }
         uint32_t getCapacity() const override { return capacity; }
 
-        // Vulkan doesnt not have a concept of the first descriptor in the heap
+        // Vulkan doesn't have a concept of the first descriptor in the heap
         uint32_t getFirstDescriptorIndexInHeap() const override { return 0; }
         Object getNativeObject(ObjectType objectType) override;
 
@@ -921,19 +901,31 @@ namespace nvrhi::vulkan
         std::unordered_map<std::string, uint32_t> shaderGroups; // name -> index
         std::vector<uint8_t> shaderGroupHandles;
 
-        explicit RayTracingPipeline(const VulkanContext& context)
+        explicit RayTracingPipeline(const VulkanContext& context, Device* device)
             : m_Context(context)
+            , m_Device(device)
         { }
 
         ~RayTracingPipeline() override;
         const rt::PipelineDesc& getDesc() const override { return desc; }
-        rt::ShaderTableHandle createShaderTable() override;
+        rt::ShaderTableHandle createShaderTable(rt::ShaderTableDesc const& stDesc) override;
         Object getNativeObject(ObjectType objectType) override;
 
         int findShaderGroup(const std::string& name); // returns -1 if not found
+        uint32_t getShaderTableEntrySize() const { return m_Context.rayTracingPipelineProperties.shaderGroupBaseAlignment; }
 
     private:
         const VulkanContext& m_Context;
+        Device* m_Device;
+    };
+
+    struct ShaderTableState
+    {
+        uint32_t version = 0;
+        vk::StridedDeviceAddressRegionKHR rayGen;
+        vk::StridedDeviceAddressRegionKHR miss;
+        vk::StridedDeviceAddressRegionKHR hitGroups;
+        vk::StridedDeviceAddressRegionKHR callable;
     };
 
     class ShaderTable : public RefCounter<rt::IShaderTable>
@@ -948,11 +940,21 @@ namespace nvrhi::vulkan
 
         uint32_t version = 0;
 
-        ShaderTable(const VulkanContext& context, RayTracingPipeline* _pipeline)
+        BufferHandle cache;
+        ShaderTableState cacheState;
+
+        ShaderTable(const VulkanContext& context, RayTracingPipeline* _pipeline, rt::ShaderTableDesc const& desc)
             : pipeline(_pipeline)
             , m_Context(context)
+            , m_Desc(desc)
         { }
         
+        size_t getUploadSize() const { return pipeline->getShaderTableEntrySize() * size_t(getNumEntries()); }
+        void bake(uint8_t* cpuVA, vk::DeviceAddress gpuVA, ShaderTableState& state);
+
+        rt::ShaderTableDesc const& getDesc() const override { return m_Desc; }
+        uint32_t getNumEntries() const override;
+        rt::IPipeline* getPipeline() const override { return pipeline; }
         void setRayGenerationShader(const char* exportName, IBindingSet* bindings = nullptr) override;
         int addMissShader(const char* exportName, IBindingSet* bindings = nullptr) override;
         int addHitGroup(const char* exportName, IBindingSet* bindings = nullptr) override;
@@ -960,11 +962,10 @@ namespace nvrhi::vulkan
         void clearMissShaders() override;
         void clearHitShaders() override;
         void clearCallableShaders() override;
-        rt::IPipeline* getPipeline() override { return pipeline; }
-        uint32_t getNumEntries() const;
 
     private:
         const VulkanContext& m_Context;
+        rt::ShaderTableDesc const m_Desc;
 
         bool verifyShaderGroupExists(const char* exportName, int shaderGroupIndex) const;
     };
@@ -1124,9 +1125,13 @@ namespace nvrhi::vulkan
 
         FramebufferHandle createFramebuffer(const FramebufferDesc& desc) override;
 
+        GraphicsPipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc, FramebufferInfo const& fbinfo) override;
+
         GraphicsPipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc, IFramebuffer* fb) override;
 
         ComputePipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
+
+        MeshletPipelineHandle createMeshletPipeline(const MeshletPipelineDesc& desc, FramebufferInfo const& fbinfo) override;
 
         MeshletPipelineHandle createMeshletPipeline(const MeshletPipelineDesc& desc, IFramebuffer* fb) override;
 
@@ -1154,6 +1159,8 @@ namespace nvrhi::vulkan
         void runGarbageCollection() override;
         bool queryFeatureSupport(Feature feature, void* pInfo = nullptr, size_t infoSize = 0) override;
         FormatSupport queryFormatSupport(Format format) override;
+        coopvec::DeviceFeatures queryCoopVecFeatures() override;
+        size_t getCoopVecMatrixSize(coopvec::DataType type, coopvec::MatrixLayout layout, int rows, int columns) override;
         Object getNativeQueue(ObjectType objectType, CommandQueue queue) override;
         IMessageCallback* getMessageCallback() override { return m_Context.messageCallback; }
         bool isAftermathEnabled() override { return m_AftermathEnabled; }
@@ -1164,10 +1171,13 @@ namespace nvrhi::vulkan
         void queueWaitForSemaphore(CommandQueue waitQueue, VkSemaphore semaphore, uint64_t value) override;
         void queueSignalSemaphore(CommandQueue executionQueue, VkSemaphore semaphore, uint64_t value) override;
         uint64_t queueGetCompletedInstance(CommandQueue queue) override;
-        FramebufferHandle createHandleForNativeFramebuffer(VkRenderPass renderPass, VkFramebuffer framebuffer,
-            const FramebufferDesc& desc, bool transferOwnership) override;
 
     private:
+        // Warning m_AftermathCrashDump helper must be first due to reverse destruction order
+        // Queues will destroy CommandLists which will unregister from m_AftermathCrashDumpHelper in their destructors
+        bool m_AftermathEnabled = false;
+        AftermathCrashDumpHelper m_AftermathCrashDumpHelper;
+
         VulkanContext m_Context;
         VulkanAllocator m_Allocator;
         
@@ -1180,8 +1190,6 @@ namespace nvrhi::vulkan
         std::array<std::unique_ptr<Queue>, uint32_t(CommandQueue::Count)> m_Queues;
         
         void *mapBuffer(IBuffer* b, CpuAccessMode flags, uint64_t offset, size_t size) const;
-        bool m_AftermathEnabled = false;
-        AftermathCrashDumpHelper m_AftermathCrashDumpHelper;
     };
 
     class CommandList : public RefCounter<ICommandList>
@@ -1247,6 +1255,8 @@ namespace nvrhi::vulkan
             rt::AccelStructBuildFlags buildFlags = rt::AccelStructBuildFlags::None) override;
         void executeMultiIndirectClusterOperation(const rt::cluster::OperationDesc& desc) override;
 
+        void convertCoopVecMatrices(coopvec::ConvertMatrixLayoutDesc const* convertDescs, size_t numDescs) override;
+
         void beginTimerQuery(ITimerQuery* query) override;
         void endTimerQuery(ITimerQuery* query) override;
 
@@ -1302,15 +1312,10 @@ namespace nvrhi::vulkan
         MeshletState m_CurrentMeshletState{};
         rt::State m_CurrentRayTracingState;
         bool m_AnyVolatileBufferWrites = false;
+        bool m_BindingStatesDirty = false;
 
-        struct ShaderTableState
-        {
-            vk::StridedDeviceAddressRegionKHR rayGen;
-            vk::StridedDeviceAddressRegionKHR miss;
-            vk::StridedDeviceAddressRegionKHR hitGroups;
-            vk::StridedDeviceAddressRegionKHR callable;
-            uint32_t version = 0;
-        } m_CurrentShaderTablePointers;
+        std::unordered_map<rt::IShaderTable*, std::unique_ptr<ShaderTableState>> m_UncachedShaderTableStates;
+        ShaderTableState& getShaderTableState(rt::IShaderTable* shaderTable);
 
         std::unordered_map<Buffer*, VolatileBufferState> m_VolatileBufferStates;
 
@@ -1321,10 +1326,14 @@ namespace nvrhi::vulkan
 
         void bindBindingSets(vk::PipelineBindPoint bindPoint, vk::PipelineLayout pipelineLayout, const BindingSetVector& bindings, BindingVector<uint32_t> const& descriptorSetIdxToBindingIdx);
 
+        void beginRenderPass(nvrhi::IFramebuffer* framebuffer);
         void endRenderPass();
 
-        void trackResourcesAndBarriers(const GraphicsState& state);
-        void trackResourcesAndBarriers(const MeshletState& state);
+        void insertGraphicsResourceBarriers(const GraphicsState& state);
+        void insertComputeResourceBarriers(const ComputeState& state);
+        void insertMeshletResourceBarriers(const MeshletState& state);
+        void insertRayTracingResourceBarriers(const rt::State& state);
+        void insertResourceBarriersForBindingSets(const BindingSetVector& newBindings, const BindingSetVector& oldBindings);
         
         void writeVolatileBuffer(Buffer* buffer, const void* data, size_t dataSize);
         void flushVolatileBufferWrites();
@@ -1342,7 +1351,6 @@ namespace nvrhi::vulkan
         void buildTopLevelAccelStructInternal(AccelStruct* as, VkDeviceAddress instanceData, size_t numInstances, rt::AccelStructBuildFlags buildFlags, uint64_t currentVersion);
 
         void commitBarriersInternal();
-        void commitBarriersInternal_synchronization2();
     };
 
 } // namespace nvrhi::vulkan

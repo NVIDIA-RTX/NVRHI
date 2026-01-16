@@ -118,24 +118,47 @@ namespace nvrhi::vulkan
         vk::ShaderStageFlagBits shaderStageFlags = convertShaderTypeToShaderStageFlagBits(bindlessDesc.visibility);
         uint32_t bindingPoint = 0;
         uint32_t arraySize = bindlessDesc.maxCapacity;
-
-        // iterate over all binding types and add to map
-        for (const BindingLayoutItem& space : bindlessDesc.registerSpaces)
+        
+        if (bindlessDesc.layoutType != BindlessLayoutDesc::LayoutType::Immutable)
         {
-            vk::DescriptorType const descriptorType = convertResourceType(space.type);
-            
-            if (space.type == ResourceType::VolatileConstantBuffer)
-                m_Context.error("Volatile constant buffers are not supported in bindless layouts");
+            if (!m_Context.extensions.EXT_mutable_descriptor_type)
+            {
+                m_Context.error("Mutable descriptor types are not supported by this device. VK_EXT_mutable_descriptor_type extension is required for mutable bindless layouts.");
+            }
+
+            if (bindlessDesc.registerSpaces.size() > 0)
+            {
+                m_Context.error("Mutable descriptor sets cannot specify register spaces");
+            }
 
             vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding = vk::DescriptorSetLayoutBinding()
                 .setBinding(bindingPoint)
                 .setDescriptorCount(arraySize)
-                .setDescriptorType(descriptorType)
+                .setDescriptorType(vk::DescriptorType::eMutableEXT)
                 .setStageFlags(shaderStageFlags);
 
             vulkanLayoutBindings.push_back(descriptorSetLayoutBinding);
+        }
+        else
+        {
+            // iterate over all binding types and add to map
+            for (const BindingLayoutItem& space : bindlessDesc.registerSpaces)
+            {
+                vk::DescriptorType const descriptorType = convertResourceType(space.type);
+                
+                if (space.type == ResourceType::VolatileConstantBuffer)
+                    m_Context.error("Volatile constant buffers are not supported in bindless layouts");
 
-            ++bindingPoint;
+                vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding = vk::DescriptorSetLayoutBinding()
+                    .setBinding(bindingPoint)
+                    .setDescriptorCount(arraySize)
+                    .setDescriptorType(descriptorType)
+                    .setStageFlags(shaderStageFlags);
+
+                vulkanLayoutBindings.push_back(descriptorSetLayoutBinding);
+
+                ++bindingPoint;
+            }
         }
     }
 
@@ -164,9 +187,58 @@ namespace nvrhi::vulkan
             .setBindingCount(uint32_t(vulkanLayoutBindings.size()))
             .setPBindingFlags(bindFlag.data());
 
+        vk::DescriptorType cbvSrvUavTypes[] =
+        {
+            vk::DescriptorType::eSampledImage,
+            vk::DescriptorType::eStorageImage,
+            vk::DescriptorType::eUniformTexelBuffer,
+            vk::DescriptorType::eStorageTexelBuffer,
+            vk::DescriptorType::eUniformBuffer,
+            vk::DescriptorType::eStorageBuffer
+        };
+
+        vk::DescriptorType counterTypes[] =
+        {
+            vk::DescriptorType::eStorageBuffer
+        };
+
+        vk::DescriptorType samplerTypes[] =
+        {
+            vk::DescriptorType::eSampler
+        };
+
+        auto cbvSrvUavTypesList = vk::MutableDescriptorTypeListEXT()
+            .setDescriptorTypeCount(uint32_t(sizeof(cbvSrvUavTypes) / sizeof(cbvSrvUavTypes[0])))
+            .setPDescriptorTypes(cbvSrvUavTypes);
+
+        auto counterTypesList = vk::MutableDescriptorTypeListEXT()
+            .setDescriptorTypeCount(uint32_t(sizeof(counterTypes) / sizeof(counterTypes[0])))
+            .setPDescriptorTypes(counterTypes);
+
+        auto samplerTypesList = vk::MutableDescriptorTypeListEXT()
+            .setDescriptorTypeCount(uint32_t(sizeof(samplerTypes) / sizeof(samplerTypes[0])))
+            .setPDescriptorTypes(samplerTypes);
+
+        auto pMutableDescriptorTypeLists =
+            bindlessDesc.layoutType == BindlessLayoutDesc::LayoutType::MutableCounters ? &counterTypesList :
+            bindlessDesc.layoutType == BindlessLayoutDesc::LayoutType::MutableSampler ? &samplerTypesList :
+            &cbvSrvUavTypesList;
+
+        auto mutableDescriptorTypeCreateInfo = vk::MutableDescriptorTypeCreateInfoEXT()
+            .setMutableDescriptorTypeListCount(1)
+            .setPMutableDescriptorTypeLists(pMutableDescriptorTypeLists)
+            .setPNext(&extendedInfo);
+
         if (isBindless)
         {
-            descriptorSetLayoutInfo.setPNext(&extendedInfo);
+            if (bindlessDesc.layoutType != BindlessLayoutDesc::LayoutType::Immutable)
+            {
+                descriptorSetLayoutInfo.setPNext(&mutableDescriptorTypeCreateInfo);
+            }
+            else
+            {
+                descriptorSetLayoutInfo.setPNext(&extendedInfo);
+            }
         }
 
         const vk::Result res = m_Context.device.createDescriptorSetLayout(&descriptorSetLayoutInfo,
@@ -522,6 +594,21 @@ namespace nvrhi::vulkan
                 utils::InvalidEnum();
                 break;
             }
+
+            // Update the hasUavBindings flag, it's cleaner to do it as a separate switch.
+            switch (binding.type)
+            {
+            case ResourceType::Texture_UAV:
+            case ResourceType::TypedBuffer_UAV:
+            case ResourceType::StructuredBuffer_UAV:
+            case ResourceType::RawBuffer_UAV:
+            case ResourceType::SamplerFeedbackTexture_UAV:
+                ret->hasUavBindings = true;
+                break;
+            default:
+                break;
+            }
+
         }
 
         m_Context.device.updateDescriptorSets(uint32_t(descriptorWriteInfo.size()), descriptorWriteInfo.data(), 0, nullptr);
@@ -626,7 +713,11 @@ namespace nvrhi::vulkan
         if (binding.slot >= descriptorTable->capacity)
             return false;
 
-        vk::Result res;
+        if (binding.type == ResourceType::None)
+        {
+            // Vulkan doesn't support null descriptors, we use vk::DescriptorBindingFlagBits::ePartiallyBound
+            return true;
+        }
 
         // collect all of the descriptor write data
         static_vector<vk::DescriptorImageInfo, c_MaxBindlessRegisterSpaces> descriptorImageInfo;
@@ -654,141 +745,151 @@ namespace nvrhi::vulkan
             );
         };
 
-        for (uint32_t bindingLocation = 0; bindingLocation < uint32_t(layout->bindlessDesc.registerSpaces.size()); bindingLocation++)
+        auto writeDescriptorForBinding = [&](const vk::DescriptorSetLayoutBinding& layoutBinding) -> void
         {
-            if (layout->bindlessDesc.registerSpaces[bindingLocation].type == binding.type)
+            switch (binding.type)
             {
-                const vk::DescriptorSetLayoutBinding& layoutBinding = layout->vulkanLayoutBindings[bindingLocation];
+            case ResourceType::Texture_SRV:
+            {
+                const auto& texture = checked_cast<Texture*>(binding.resourceHandle);
 
-                switch (binding.type)
+                const auto subresource = binding.subresources.resolve(texture->desc, false);
+                const auto textureViewType = getTextureViewType(binding.format, texture->desc.format);
+                auto& view = texture->getSubresourceView(subresource, binding.dimension, binding.format, vk::ImageUsageFlagBits::eSampled, textureViewType);
+
+                auto& imageInfo = descriptorImageInfo.emplace_back();
+                imageInfo = vk::DescriptorImageInfo()
+                    .setImageView(view.view)
+                    .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+
+                generateWriteDescriptorData(layoutBinding.binding,
+                    convertResourceType(binding.type),
+                    &imageInfo, nullptr, nullptr);
+            }
+            break;
+
+            case ResourceType::Texture_UAV:
+            {
+                const auto texture = checked_cast<Texture*>(binding.resourceHandle);
+
+                const auto subresource = binding.subresources.resolve(texture->desc, true);
+                const auto textureViewType = getTextureViewType(binding.format, texture->desc.format);
+                auto& view = texture->getSubresourceView(subresource, binding.dimension, binding.format, vk::ImageUsageFlagBits::eStorage, textureViewType);
+
+                auto& imageInfo = descriptorImageInfo.emplace_back();
+                imageInfo = vk::DescriptorImageInfo()
+                    .setImageView(view.view)
+                    .setImageLayout(vk::ImageLayout::eGeneral);
+
+                generateWriteDescriptorData(layoutBinding.binding,
+                    convertResourceType(binding.type),
+                    &imageInfo, nullptr, nullptr);
+            }
+            break;
+
+            case ResourceType::TypedBuffer_SRV:
+            case ResourceType::TypedBuffer_UAV:
+            {
+                const auto& buffer = checked_cast<Buffer*>(binding.resourceHandle);
+
+                auto vkformat = nvrhi::vulkan::convertFormat(binding.format);
+
+                const auto range = binding.range.resolve(buffer->desc);
+                size_t viewInfoHash = 0;
+                nvrhi::hash_combine(viewInfoHash, range.byteOffset);
+                nvrhi::hash_combine(viewInfoHash, range.byteSize);
+                nvrhi::hash_combine(viewInfoHash, (uint64_t)vkformat);
+
+                const auto& bufferViewFound = buffer->viewCache.find(viewInfoHash);
+                auto& bufferViewRef = (bufferViewFound != buffer->viewCache.end()) ? bufferViewFound->second : buffer->viewCache[viewInfoHash];
+                if (bufferViewFound == buffer->viewCache.end())
                 {
-                case ResourceType::Texture_SRV:
-                {
-                    const auto& texture = checked_cast<Texture*>(binding.resourceHandle);
+                    assert(binding.format != Format::UNKNOWN);
 
-                    const auto subresource = binding.subresources.resolve(texture->desc, false);
-                    const auto textureViewType = getTextureViewType(binding.format, texture->desc.format);
-                    auto& view = texture->getSubresourceView(subresource, binding.dimension, binding.format, vk::ImageUsageFlagBits::eSampled, textureViewType);
-
-                    auto& imageInfo = descriptorImageInfo.emplace_back();
-                    imageInfo = vk::DescriptorImageInfo()
-                        .setImageView(view.view)
-                        .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
-
-                    generateWriteDescriptorData(layoutBinding.binding,
-                        layoutBinding.descriptorType,
-                        &imageInfo, nullptr, nullptr);
-                }
-
-                break;
-
-                case ResourceType::Texture_UAV:
-                {
-                    const auto texture = checked_cast<Texture*>(binding.resourceHandle);
-
-                    const auto subresource = binding.subresources.resolve(texture->desc, true);
-                    const auto textureViewType = getTextureViewType(binding.format, texture->desc.format);
-                    auto& view = texture->getSubresourceView(subresource, binding.dimension, binding.format, vk::ImageUsageFlagBits::eStorage, textureViewType);
-
-                    auto& imageInfo = descriptorImageInfo.emplace_back();
-                    imageInfo = vk::DescriptorImageInfo()
-                        .setImageView(view.view)
-                        .setImageLayout(vk::ImageLayout::eGeneral);
-
-                    generateWriteDescriptorData(layoutBinding.binding,
-                        layoutBinding.descriptorType,
-                        &imageInfo, nullptr, nullptr);
-                }
-
-                break;
-
-                case ResourceType::TypedBuffer_SRV:
-                case ResourceType::TypedBuffer_UAV:
-                {
-                    const auto& buffer = checked_cast<Buffer*>(binding.resourceHandle);
-
-                    auto vkformat = nvrhi::vulkan::convertFormat(binding.format);
-
-                    const auto range = binding.range.resolve(buffer->desc);
-                    size_t viewInfoHash = 0;
-                    nvrhi::hash_combine(viewInfoHash, range.byteOffset);
-                    nvrhi::hash_combine(viewInfoHash, range.byteSize);
-                    nvrhi::hash_combine(viewInfoHash, (uint64_t)vkformat);
-
-                    const auto& bufferViewFound = buffer->viewCache.find(viewInfoHash);
-                    auto& bufferViewRef = (bufferViewFound != buffer->viewCache.end()) ? bufferViewFound->second : buffer->viewCache[viewInfoHash];
-                    if (bufferViewFound == buffer->viewCache.end())
-                    {
-                        assert(binding.format != Format::UNKNOWN);
-
-                        auto bufferViewInfo = vk::BufferViewCreateInfo()
-                            .setBuffer(buffer->buffer)
-                            .setOffset(range.byteOffset)
-                            .setRange(range.byteSize)
-                            .setFormat(vk::Format(vkformat));
-
-                        res = m_Context.device.createBufferView(&bufferViewInfo, m_Context.allocationCallbacks, &bufferViewRef);
-                        ASSERT_VK_OK(res);
-                    }
-
-                    generateWriteDescriptorData(layoutBinding.binding,
-                        layoutBinding.descriptorType,
-                        nullptr, nullptr, &bufferViewRef);
-                }
-                break;
-
-                case ResourceType::StructuredBuffer_SRV:
-                case ResourceType::StructuredBuffer_UAV:
-                case ResourceType::RawBuffer_SRV:
-                case ResourceType::RawBuffer_UAV:
-                case ResourceType::ConstantBuffer:
-                case ResourceType::VolatileConstantBuffer:
-                {
-                    const auto buffer = checked_cast<Buffer*>(binding.resourceHandle);
-
-                    const auto range = binding.range.resolve(buffer->desc);
-
-                    auto& bufferInfo = descriptorBufferInfo.emplace_back();
-                    bufferInfo = vk::DescriptorBufferInfo()
+                    auto bufferViewInfo = vk::BufferViewCreateInfo()
                         .setBuffer(buffer->buffer)
                         .setOffset(range.byteOffset)
-                        .setRange(range.byteSize);
+                        .setRange(range.byteSize)
+                        .setFormat(vk::Format(vkformat));
 
-                    assert(buffer->buffer);
-                    generateWriteDescriptorData(layoutBinding.binding,
-                        layoutBinding.descriptorType,
-                        nullptr, &bufferInfo, nullptr);
+                    vk::Result res = m_Context.device.createBufferView(&bufferViewInfo, m_Context.allocationCallbacks, &bufferViewRef);
+                    ASSERT_VK_OK(res);
                 }
 
+                generateWriteDescriptorData(layoutBinding.binding,
+                    convertResourceType(binding.type),
+                    nullptr, nullptr, &bufferViewRef);
+            }
+            break;
+
+            case ResourceType::StructuredBuffer_SRV:
+            case ResourceType::StructuredBuffer_UAV:
+            case ResourceType::RawBuffer_SRV:
+            case ResourceType::RawBuffer_UAV:
+            case ResourceType::ConstantBuffer:
+            case ResourceType::VolatileConstantBuffer:
+            {
+                const auto buffer = checked_cast<Buffer*>(binding.resourceHandle);
+
+                const auto range = binding.range.resolve(buffer->desc);
+
+                auto& bufferInfo = descriptorBufferInfo.emplace_back();
+                bufferInfo = vk::DescriptorBufferInfo()
+                    .setBuffer(buffer->buffer)
+                    .setOffset(range.byteOffset)
+                    .setRange(range.byteSize);
+
+                assert(buffer->buffer);
+                generateWriteDescriptorData(layoutBinding.binding,
+                    convertResourceType(binding.type),
+                    nullptr, &bufferInfo, nullptr);
+            }
+            break;
+
+            case ResourceType::Sampler:
+            {
+                const auto& sampler = checked_cast<Sampler*>(binding.resourceHandle);
+
+                auto& imageInfo = descriptorImageInfo.emplace_back();
+                imageInfo = vk::DescriptorImageInfo()
+                    .setSampler(sampler->sampler);
+
+                generateWriteDescriptorData(layoutBinding.binding,
+                    convertResourceType(binding.type),
+                    &imageInfo, nullptr, nullptr);
+            }
+            break;
+
+            case ResourceType::RayTracingAccelStruct:
+                utils::NotImplemented();
                 break;
 
-                case ResourceType::Sampler:
+            case ResourceType::PushConstants:
+                utils::NotSupported();
+                break;
+
+            case ResourceType::None:
+            case ResourceType::Count:
+            default:
+                utils::InvalidEnum();
+            }
+        };
+
+        if (layout->bindlessDesc.layoutType != BindlessLayoutDesc::LayoutType::Immutable)
+        {
+            // For mutable descriptor sets, there are no register spaces, so always use the first layout binding
+            assert(layout->vulkanLayoutBindings.size() > 0);
+            writeDescriptorForBinding(layout->vulkanLayoutBindings[0]);
+        }
+        else
+        {
+            // For regular bindless layouts, iterate through register spaces to find matching binding type
+            for (uint32_t bindingLocation = 0; bindingLocation < uint32_t(layout->bindlessDesc.registerSpaces.size()); bindingLocation++)
+            {
+                if (layout->bindlessDesc.registerSpaces[bindingLocation].type == binding.type)
                 {
-                    const auto& sampler = checked_cast<Sampler*>(binding.resourceHandle);
-
-                    auto& imageInfo = descriptorImageInfo.emplace_back();
-                    imageInfo = vk::DescriptorImageInfo()
-                        .setSampler(sampler->sampler);
-
-                    generateWriteDescriptorData(layoutBinding.binding,
-                        layoutBinding.descriptorType,
-                        &imageInfo, nullptr, nullptr);
-                }
-
-                break;
-
-                case ResourceType::RayTracingAccelStruct:
-                    utils::NotImplemented();
-                    break;
-
-                case ResourceType::PushConstants:
-                    utils::NotSupported();
-                    break;
-
-                case ResourceType::None:
-                case ResourceType::Count:
-                default:
-                    utils::InvalidEnum();
+                    const vk::DescriptorSetLayoutBinding& layoutBinding = layout->vulkanLayoutBindings[bindingLocation];
+                    writeDescriptorForBinding(layoutBinding);
                 }
             }
         }

@@ -71,7 +71,8 @@ namespace nvrhi::utils
         uint32_t registerSpace,
         const nvrhi::BindingSetDesc& bindingSetDesc,
         nvrhi::BindingLayoutHandle& bindingLayout,
-        nvrhi::BindingSetHandle& bindingSet)
+        nvrhi::BindingSetHandle& bindingSet,
+        bool registerSpaceIsDescriptorSet)
     {
         auto convertSetToLayout = [](const std::vector<BindingSetItem>& setDesc, std::vector<BindingLayoutItem>& layoutDesc)
         {
@@ -92,6 +93,7 @@ namespace nvrhi::utils
             nvrhi::BindingLayoutDesc bindingLayoutDesc;
             bindingLayoutDesc.visibility = visibility;
             bindingLayoutDesc.registerSpace = registerSpace;
+            bindingLayoutDesc.registerSpaceIsDescriptorSet = registerSpaceIsDescriptorSet;
             convertSetToLayout(bindingSetDesc.bindings, bindingLayoutDesc.bindings);
             
             bindingLayout = device->createBindingLayout(bindingLayoutDesc);

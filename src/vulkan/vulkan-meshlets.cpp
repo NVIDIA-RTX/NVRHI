@@ -25,22 +25,19 @@
 
 namespace nvrhi::vulkan
 {
-
-    template <typename T>
-    using attachment_vector = nvrhi::static_vector<T, c_MaxRenderTargets + 1>; // render targets + depth
-
-    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc& desc, IFramebuffer* _fb)
+    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc& desc, FramebufferInfo const& fbinfo)
     {
-        if (!m_Context.extensions.NV_mesh_shader)
+        if (!m_Context.extensions.EXT_mesh_shader)
+        {
             utils::NotSupported();
+            return nullptr;
+        }
 
         vk::Result res;
 
-        Framebuffer* fb = checked_cast<Framebuffer*>(_fb);
-        
         MeshletPipeline *pso = new MeshletPipeline(m_Context);
         pso->desc = desc;
-        pso->framebufferInfo = fb->framebufferInfo;
+        pso->framebufferInfo = fbinfo;
 
         Shader* AS = checked_cast<Shader*>(desc.AS.Get());
         Shader* MS = checked_cast<Shader*>(desc.MS.Get());
@@ -116,7 +113,7 @@ namespace nvrhi::vulkan
                             .setLineWidth(1.0f);
         
         auto multisample = vk::PipelineMultisampleStateCreateInfo()
-                            .setRasterizationSamples(vk::SampleCountFlagBits(fb->framebufferInfo.sampleCount))
+                            .setRasterizationSamples(vk::SampleCountFlagBits(fbinfo.sampleCount))
                             .setAlphaToCoverageEnable(blendState.alphaToCoverageEnable);
 
         auto depthStencil = vk::PipelineDepthStencilStateCreateInfo()
@@ -136,9 +133,9 @@ namespace nvrhi::vulkan
             desc.bindingLayouts);
         CHECK_VK_FAIL(res)
 
-        attachment_vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachments(fb->desc.colorAttachments.size());
+        static_vector<vk::PipelineColorBlendAttachmentState, c_MaxRenderTargets> colorBlendAttachments(fbinfo.colorFormats.size());
 
-        for(uint32_t i = 0; i < uint32_t(fb->desc.colorAttachments.size()); i++)
+        for(uint32_t i = 0; i < uint32_t(fbinfo.colorFormats.size()); i++)
         {
             colorBlendAttachments[i] = convertBlendState(blendState.targets[i]);
         }
@@ -147,7 +144,7 @@ namespace nvrhi::vulkan
                             .setAttachmentCount(uint32_t(colorBlendAttachments.size()))
                             .setPAttachments(colorBlendAttachments.data());
 
-        pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fb->desc.colorAttachments.size()));
+        pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fbinfo.colorFormats.size()));
         
         static_vector<vk::DynamicState, 4> dynamicStates = {
             vk::DynamicState::eViewport,
@@ -161,11 +158,24 @@ namespace nvrhi::vulkan
         auto dynamicStateInfo = vk::PipelineDynamicStateCreateInfo()
             .setDynamicStateCount(uint32_t(dynamicStates.size()))
             .setPDynamicStates(dynamicStates.data());
+            
+        std::array<vk::Format, c_MaxRenderTargets> colorFormats;
+        for (size_t i = 0; i < fbinfo.colorFormats.size(); i++)
+            colorFormats[i] = vk::Format(convertFormat(fbinfo.colorFormats[i]));
+
+        FormatInfo const& depthStencilFormatInfo = getFormatInfo(fbinfo.depthFormat);
+        vk::Format depthStencilFormat = vk::Format(convertFormat(fbinfo.depthFormat));
+
+        auto renderingInfo = vk::PipelineRenderingCreateInfo()
+            .setColorAttachmentCount(uint32_t(fbinfo.colorFormats.size()))
+            .setPColorAttachmentFormats(colorFormats.data())
+            .setDepthAttachmentFormat(depthStencilFormatInfo.hasDepth ? depthStencilFormat : vk::Format::eUndefined)
+            .setStencilAttachmentFormat(depthStencilFormatInfo.hasStencil ? depthStencilFormat : vk::Format::eUndefined);
 
         auto pipelineInfo = vk::GraphicsPipelineCreateInfo()
+            .setPNext(&renderingInfo)
             .setStageCount(uint32_t(shaderStages.size()))
             .setPStages(shaderStages.data())
-            //.setPVertexInputState(&vertexInput)
             .setPInputAssemblyState(&inputAssembly)
             .setPViewportState(&viewportState)
             .setPRasterizationState(&rasterizer)
@@ -174,8 +184,6 @@ namespace nvrhi::vulkan
             .setPColorBlendState(&colorBlend)
             .setPDynamicState(&dynamicStateInfo)
             .setLayout(pso->pipelineLayout)
-            .setRenderPass(fb->renderPass)
-            .setSubpass(0)
             .setBasePipelineHandle(nullptr)
             .setBasePipelineIndex(-1);
 
@@ -183,10 +191,19 @@ namespace nvrhi::vulkan
                                                      1, &pipelineInfo,
                                                      m_Context.allocationCallbacks,
                                                      &pso->pipeline);
+
         ASSERT_VK_OK(res); // for debugging
         CHECK_VK_FAIL(res)
         
         return MeshletPipelineHandle::Create(pso);
+    }
+
+    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc& desc, IFramebuffer* fb)
+    {
+        if (!fb)
+            return nullptr;
+            
+        return createMeshletPipeline(desc, fb->getFramebufferInfo());
     }
 
     MeshletPipeline::~MeshletPipeline()
@@ -219,7 +236,6 @@ namespace nvrhi::vulkan
 
     static vk::Viewport VKViewportWithDXCoords(const Viewport& v)
     {
-        // requires VK_KHR_maintenance1 which allows negative-height to indicate an inverted coord space to match DX
         return vk::Viewport(v.minX, v.maxY, v.maxX - v.minX, -(v.maxY - v.minY), v.minZ, v.maxZ);
     }
 
@@ -232,7 +248,7 @@ namespace nvrhi::vulkan
 
         if (m_EnableAutomaticBarriers)
         {
-            trackResourcesAndBarriers(state);
+            insertMeshletResourceBarriers(state);
         }
 
         bool anyBarriers = this->anyBarriers();
@@ -255,16 +271,7 @@ namespace nvrhi::vulkan
 
         if(!m_CurrentMeshletState.framebuffer)
         {
-            m_CurrentCmdBuf->cmdBuf.beginRenderPass(vk::RenderPassBeginInfo()
-                .setRenderPass(fb->renderPass)
-                .setFramebuffer(fb->framebuffer)
-                .setRenderArea(vk::Rect2D()
-                    .setOffset(vk::Offset2D(0, 0))
-                    .setExtent(vk::Extent2D(fb->framebufferInfo.width, fb->framebufferInfo.height)))
-                .setClearValueCount(0),
-                vk::SubpassContents::eInline);
-
-            m_CurrentCmdBuf->referencedResources.push_back(state.framebuffer);
+            beginRenderPass(fb);
         }
 
         m_CurrentPipelineLayout = pso->pipelineLayout;
@@ -336,16 +343,9 @@ namespace nvrhi::vulkan
     {
         assert(m_CurrentCmdBuf);
 
-        if (groupsY > 1 || groupsZ > 1)
-        {
-            // only 1D dispatches are supported by Vulkan
-            utils::NotSupported();
-            return;
-        }
-
         updateMeshletVolatileBuffers();
 
-        m_CurrentCmdBuf->cmdBuf.drawMeshTasksNV(groupsX, 0);
+        m_CurrentCmdBuf->cmdBuf.drawMeshTasksEXT(groupsX, groupsY, groupsZ);
     }
 
 } // namespace nvrhi::vulkan

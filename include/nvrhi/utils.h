@@ -47,7 +47,8 @@ namespace nvrhi::utils
         uint32_t registerSpace,
         const BindingSetDesc& bindingSetDesc, 
         BindingLayoutHandle& bindingLayout, 
-        BindingSetHandle& bindingSet);
+        BindingSetHandle& bindingSet,
+        bool registerSpaceIsDescriptorSet = false);
 
     NVRHI_API void ClearColorAttachment(
         ICommandList* commandList,

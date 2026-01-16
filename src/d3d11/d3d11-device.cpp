@@ -334,8 +334,15 @@ namespace nvrhi::d3d11
         return false;
     }
 
+    MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc&, FramebufferInfo const&)
+    {
+        utils::NotSupported();
+        return nullptr;
+    }
+
     MeshletPipelineHandle Device::createMeshletPipeline(const MeshletPipelineDesc&, IFramebuffer*)
     {
+        utils::NotSupported();
         return nullptr;
     }
 
@@ -402,6 +409,18 @@ namespace nvrhi::d3d11
         sampler->sampler = sState;
         sampler->desc = d;
         return SamplerHandle::Create(sampler);
+    }
+
+    coopvec::DeviceFeatures Device::queryCoopVecFeatures()
+    {
+        utils::NotSupported();
+        return coopvec::DeviceFeatures();
+    }
+    
+    size_t Device::getCoopVecMatrixSize(coopvec::DataType, coopvec::MatrixLayout, int, int)
+    {
+        utils::NotSupported();
+        return 0;
     }
 
 } // namespace nvrhi::d3d11

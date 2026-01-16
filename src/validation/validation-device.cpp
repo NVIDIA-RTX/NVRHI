@@ -666,6 +666,154 @@ namespace nvrhi::validation
 
     FramebufferHandle DeviceWrapper::createFramebuffer(const FramebufferDesc& desc)
     {
+        uint32_t width = 0;
+        uint32_t height = 0;
+        uint32_t arraySize = 0;
+        uint32_t sampleCount = 0;
+
+        if (desc.depthAttachment.texture)
+        {
+            TextureDesc const& d = desc.depthAttachment.texture->getDesc();
+
+            TextureSubresourceSet const subresources = desc.depthAttachment.subresources.resolve(d, true);
+
+            uint32_t const mipWidth = std::max(d.width >> subresources.baseMipLevel, 1u);
+            uint32_t const mipHeight = std::max(d.height >> subresources.baseMipLevel, 1u);
+
+            width = mipWidth;
+            height = mipHeight;
+            arraySize = subresources.numArraySlices;
+            sampleCount = d.sampleCount;
+
+            if (!d.isRenderTarget)
+            {
+                std::stringstream ss;
+                ss << "Depth attachment texture " << utils::DebugNameToString(d.debugName)
+                    << " must be created with isRenderTarget = true";
+                error(ss.str());
+                return nullptr;
+            }
+
+            FormatInfo const& formatInfo = getFormatInfo(d.format);
+            if (formatInfo.kind != FormatKind::DepthStencil)
+            {
+                std::stringstream ss;
+                ss << "Depth attachment texture " << utils::DebugNameToString(d.debugName) << " has a format "
+                    << formatInfo.name << " that does not support depth or stencil";
+                error(ss.str());
+                return nullptr;
+            }
+        }
+
+        for (size_t i = 0; i < desc.colorAttachments.size(); ++i)
+        {
+            FramebufferAttachment const& att = desc.colorAttachments[i];
+            if (!att.texture)
+            {
+                std::stringstream ss;
+                ss << "Color attachment " << i << " is NULL";
+                error(ss.str());
+                return nullptr;
+            }
+
+            TextureDesc const& d = att.texture->getDesc();
+            if (!d.isRenderTarget)
+            {
+                std::stringstream ss;
+                ss << "Color attachment  " << i << " texture " << utils::DebugNameToString(d.debugName)
+                    << " must be created with isRenderTarget = true";
+                error(ss.str());
+                return nullptr;
+            }
+
+            TextureSubresourceSet const subresources = att.subresources.resolve(d, true);
+
+            uint32_t const mipWidth = std::max(d.width >> subresources.baseMipLevel, 1u);
+            uint32_t const mipHeight = std::max(d.height >> subresources.baseMipLevel, 1u);
+
+            if (!width || !height || !arraySize || !sampleCount)
+            {
+                width = mipWidth;
+                height = mipHeight;
+                arraySize = subresources.numArraySlices;
+                sampleCount = d.sampleCount;
+            }
+            else
+            {
+                if (width != mipWidth ||
+                    height != mipHeight ||
+                    arraySize != subresources.numArraySlices ||
+                    sampleCount != d.sampleCount)
+                {
+                    std::stringstream ss;
+                    ss << "Color attachment " << i << " texture " << utils::DebugNameToString(d.debugName)
+                        << " has dimensions " << mipWidth << "x" << mipHeight << " with " << subresources.numArraySlices
+                        << " array slice(s) and " << sampleCount << " sample(s), which do not match the dimensions of depth"
+                        << " or previous color attachments " << width << "x" << height << " with " << arraySize
+                        << " array slice(s) and " << sampleCount << " sample(s)";
+                    error(ss.str());
+                    return nullptr;
+                }
+            }
+
+            FormatInfo const& formatInfo = getFormatInfo(d.format);
+            if (!formatInfo.hasRed)
+            {
+                std::stringstream ss;
+                ss << "Color attachment " << i << " texture " << utils::DebugNameToString(d.debugName) << " has a format "
+                    << formatInfo.name << " that does not have color or alpha channels";
+                error(ss.str());
+                return nullptr;
+            }
+
+            if (formatInfo.blockSize > 1)
+            {
+                std::stringstream ss;
+                ss << "Color attachment " << i << " texture " << utils::DebugNameToString(d.debugName) << " has a format "
+                    << formatInfo.name << " that is block-compressed. Block-compressed formats are not supported for render targets.";
+                error(ss.str());
+                return nullptr;
+            }
+        }
+
+        if (desc.shadingRateAttachment.texture)
+        {
+            TextureDesc const& d = desc.shadingRateAttachment.texture->getDesc();
+
+            // The shading rate attachment must be an R8_UINT format and have a single sample.
+            // Its dimensions may be different (smaller) from the color attachments.
+            // Not sure about array size or how VRS works with rendering into a texture array.
+
+            if (d.format != Format::R8_UINT)
+            {
+                FormatInfo const& formatInfo = getFormatInfo(d.format);
+
+                std::stringstream ss;
+                ss << "Shading rate attachment texture " << utils::DebugNameToString(d.debugName) << " has a format "
+                    << formatInfo.name << " that is not R8_UINT";
+                error(ss.str());
+                return nullptr;
+            }
+
+            if (d.sampleCount != 1)
+            {
+                std::stringstream ss;
+                ss << "Shading rate attachment texture " << utils::DebugNameToString(d.debugName) << " has a sample count "
+                    << d.sampleCount << " that is not 1";
+                error(ss.str());
+                return nullptr;
+            }
+
+            if (!d.isShadingRateSurface)
+            {
+                std::stringstream ss;
+                ss << "Shading rate attachment texture " << utils::DebugNameToString(d.debugName)
+                    << " must be created with isShadingRateSurface = true";
+                error(ss.str());
+                return nullptr;
+            }
+        }
+
         return m_Device->createFramebuffer(desc);
     }
 
@@ -727,12 +875,12 @@ namespace nvrhi::validation
     }
 
     static void FillBindingLayoutSummary(IMessageCallback* messageCallback, BindingLayoutDesc const& desc,
-        BindingSummary& bindings, BindingLocationSet& duplicates)
+        bool ignoreRegisterSpaces, BindingSummary& bindings, BindingLocationSet& duplicates)
     {
         for (const auto& item : desc.bindings)
         {
             BindingLocation location;
-            location.registerSpace = desc.registerSpace;
+            location.registerSpace = ignoreRegisterSpaces ? 0 : desc.registerSpace;
             location.slot = item.slot;
             uint32_t arraySize = item.getArraySize();
             for (location.arrayElement = 0; location.arrayElement < arraySize; ++location.arrayElement)
@@ -743,12 +891,12 @@ namespace nvrhi::validation
     }
     
     static void FillBindingSetSummary(IMessageCallback* messageCallback, BindingSetDesc const& desc,
-        uint32_t registerSpace, BindingSummary& bindings, BindingLocationSet& duplicates)
+        bool ignoreRegisterSpaces, uint32_t registerSpace, BindingSummary& bindings, BindingLocationSet& duplicates)
     {
         for (const auto& item : desc.bindings)
         {
             BindingLocation location;
-            location.registerSpace = registerSpace;
+            location.registerSpace = ignoreRegisterSpaces ? 0 : registerSpace;
             location.slot = item.slot;
             location.arrayElement = item.arrayElement;
             UpdateBindingSummaryWithLocation(messageCallback, item.type, location, bindings, duplicates);
@@ -825,6 +973,8 @@ namespace nvrhi::validation
         std::stringstream ssDuplicateBindings;
         std::stringstream ssOverlappingBindings;
 
+        bool const ignoreRegisterSpaces = (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11);
+
         for (IShader* shader : shaders)
         {
             ShaderType stage = shader->getDesc().shaderType;
@@ -853,7 +1003,8 @@ namespace nvrhi::validation
                                 continue;
 
                         BindingLocationSet duplicates;
-                        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc, bindingsPerLayout[layoutIndex], duplicates);
+                        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc, ignoreRegisterSpaces,
+                            bindingsPerLayout[layoutIndex], duplicates);
 
                         // Layouts with duplicates should not have passed validation in createBindingLayout
                         assert(duplicates.empty());
@@ -1057,34 +1208,15 @@ namespace nvrhi::validation
         return false;
     }
 
-    bool DeviceWrapper::validateRenderState(const RenderState& renderState, IFramebuffer* fb) const
+    bool DeviceWrapper::validateRenderState(const RenderState& renderState, FramebufferInfo const& fbinfo) const
     {
-        if (!fb)
-        {
-            error("framebuffer is NULL");
-            return false;
-        }
-
-        const auto fbDesc = fb->getDesc();
-
         if (renderState.depthStencilState.depthTestEnable ||
             renderState.depthStencilState.stencilEnable)
         {
-            if (!fbDesc.depthAttachment.valid())
+            if (fbinfo.depthFormat == Format::UNKNOWN)
             {
                 error("The depth-stencil state indicates that depth or stencil operations are used, "
-                    "but the framebuffer has no depth attachment.");
-                return false;
-            }
-        }
-
-        if ((renderState.depthStencilState.depthTestEnable && renderState.depthStencilState.depthWriteEnable) ||
-            (renderState.depthStencilState.stencilEnable && renderState.depthStencilState.stencilWriteMask != 0))
-        {
-            if (fbDesc.depthAttachment.isReadOnly)
-            {
-                error("The depth-stencil state indicates that depth or stencil writes are used, "
-                    "but the framebuffer's depth attachment is read-only.");
+                    "but the framebuffer info has no depth format.");
                 return false;
             }
         }
@@ -1098,7 +1230,7 @@ namespace nvrhi::validation
         return true;
     }
 
-    GraphicsPipelineHandle DeviceWrapper::createGraphicsPipeline(const GraphicsPipelineDesc& pipelineDesc, IFramebuffer* fb)
+    GraphicsPipelineHandle DeviceWrapper::createGraphicsPipeline(const GraphicsPipelineDesc& pipelineDesc, FramebufferInfo const& fbinfo)
     {
         std::vector<IShader*> shaders;
 
@@ -1117,10 +1249,21 @@ namespace nvrhi::validation
         if (!validatePipelineBindingLayouts(pipelineDesc.bindingLayouts, shaders))
             return nullptr;
 
-        if (!validateRenderState(pipelineDesc.renderState, fb))
+        if (!validateRenderState(pipelineDesc.renderState, fbinfo))
             return nullptr;
 
-        return m_Device->createGraphicsPipeline(pipelineDesc, fb);
+        return m_Device->createGraphicsPipeline(pipelineDesc, fbinfo);
+    }
+
+    GraphicsPipelineHandle DeviceWrapper::createGraphicsPipeline(const GraphicsPipelineDesc& pipelineDesc, IFramebuffer* fb)
+    {
+        if (!fb)
+        {
+            error("framebuffer is NULL");
+            return nullptr;
+        }
+
+        return createGraphicsPipeline(pipelineDesc, fb->getFramebufferInfo());
     }
 
     ComputePipelineHandle DeviceWrapper::createComputePipeline(const ComputePipelineDesc& pipelineDesc)
@@ -1142,7 +1285,7 @@ namespace nvrhi::validation
         return m_Device->createComputePipeline(pipelineDesc);
     }
 
-    MeshletPipelineHandle DeviceWrapper::createMeshletPipeline(const MeshletPipelineDesc& pipelineDesc, IFramebuffer* fb)
+    MeshletPipelineHandle DeviceWrapper::createMeshletPipeline(const MeshletPipelineDesc& pipelineDesc, FramebufferInfo const& fbinfo)
     {
         std::vector<IShader*> shaders;
 
@@ -1160,11 +1303,22 @@ namespace nvrhi::validation
 
         if (!validatePipelineBindingLayouts(pipelineDesc.bindingLayouts, shaders))
             return nullptr;
-
-        if (!validateRenderState(pipelineDesc.renderState, fb))
+               
+        if (!validateRenderState(pipelineDesc.renderState, fbinfo))
             return nullptr;
 
-        return m_Device->createMeshletPipeline(pipelineDesc, fb);
+        return m_Device->createMeshletPipeline(pipelineDesc, fbinfo);
+    }
+
+    MeshletPipelineHandle DeviceWrapper::createMeshletPipeline(const MeshletPipelineDesc& pipelineDesc, IFramebuffer* fb)
+    {
+        if (!fb)
+        {
+            error("framebuffer is NULL");
+            return nullptr;
+        }
+
+        return createMeshletPipeline(pipelineDesc, fb->getFramebufferInfo());
     }
 
     nvrhi::rt::PipelineHandle DeviceWrapper::createRayTracingPipeline(const rt::PipelineDesc& desc)
@@ -1176,11 +1330,12 @@ namespace nvrhi::validation
     {
         std::stringstream errorStream;
         bool anyErrors = false;
+        bool const ignoreRegisterSpaces = (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11);
 
         BindingSummary bindings;
         BindingLocationSet duplicates;
 
-        FillBindingLayoutSummary(m_MessageCallback, desc, bindings, duplicates);
+        FillBindingLayoutSummary(m_MessageCallback, desc, ignoreRegisterSpaces, bindings, duplicates);
 
         if (desc.visibility == ShaderType::None)
         {
@@ -1262,14 +1417,12 @@ namespace nvrhi::validation
         }
 
         const GraphicsAPI graphicsApi = m_Device->getGraphicsAPI();
-        if (!(graphicsApi == GraphicsAPI::D3D12 || (graphicsApi == GraphicsAPI::VULKAN && desc.registerSpaceIsDescriptorSet)))
+        
+        if (desc.registerSpace != 0 && graphicsApi == GraphicsAPI::VULKAN && !desc.registerSpaceIsDescriptorSet)
         {
-            if (desc.registerSpace != 0)
-            {
-                errorStream << "Binding layout registerSpace = " << desc.registerSpace << ", which is unsupported by the "
-                    << utils::GraphicsAPIToString(graphicsApi) << " backend" << std::endl;
-                anyErrors = true;
-            }
+            errorStream << "Binding layout has nonzero registerSpace (" << desc.registerSpace << "), which is supported "
+                " on Vulkan only if the registerSpaceIsDescriptorSet flag is set" << std::endl;
+            anyErrors = true;
         }
 
         if (anyErrors)
@@ -1292,9 +1445,15 @@ namespace nvrhi::validation
             anyErrors = true;
         }
 
-        if (desc.registerSpaces.empty())
+        if (desc.registerSpaces.empty() && desc.layoutType == BindlessLayoutDesc::LayoutType::Immutable)
         {
             errorStream << "Bindless layout has no register spaces assigned" << std::endl;
+            anyErrors = true;
+        }
+
+        if (!desc.registerSpaces.empty() && desc.layoutType != BindlessLayoutDesc::LayoutType::Immutable)
+        {
+            errorStream << "Bindless mutable layout has register spaces assigned" << std::endl;
             anyErrors = true;
         }
 
@@ -1364,8 +1523,68 @@ namespace nvrhi::validation
         return false;
     }
 
-    bool DeviceWrapper::validateBindingSetItem(const BindingSetItem& binding, bool isDescriptorTable, std::stringstream& errorStream)
+    bool DeviceWrapper::validateBindingSetItem(const BindingSetItem& binding, IDescriptorTable* pOptDescriptorTable, std::stringstream& errorStream)
     {
+        bool isDescriptorTable = pOptDescriptorTable != nullptr;
+        IBindingLayout* pBindingLayout = pOptDescriptorTable ? pOptDescriptorTable->getLayout() : nullptr;
+        const BindlessLayoutDesc* pBindlessLayoutDesc = pBindingLayout ? pBindingLayout->getBindlessDesc() : nullptr;
+
+        if (pBindlessLayoutDesc)
+        {
+            if (pBindlessLayoutDesc->layoutType == BindlessLayoutDesc::LayoutType::MutableSrvUavCbv)
+            {
+                switch (binding.type)
+                {
+                case ResourceType::None:
+                case ResourceType::Texture_SRV:
+                case ResourceType::Texture_UAV:
+                case ResourceType::TypedBuffer_SRV:
+                case ResourceType::TypedBuffer_UAV:
+                case ResourceType::StructuredBuffer_SRV:
+                case ResourceType::StructuredBuffer_UAV:
+                case ResourceType::RawBuffer_SRV:
+                case ResourceType::RawBuffer_UAV:
+                case ResourceType::ConstantBuffer:
+                    // Valid descriptors
+                    break;
+                case ResourceType::Sampler:
+                    errorStream << "ResourceType::Sampler is not allowed for BindlessLayoutDesc::LayoutType::MutableSrvUavCbv." << std::endl;
+                    return false;
+                case ResourceType::SamplerFeedbackTexture_UAV:
+                    errorStream << "ResourceType::SamplerFeedbackTexture_UAV is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
+                    return false;
+                case ResourceType::VolatileConstantBuffer:
+                    errorStream << "ResourceType::VolatileConstantBuffer is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
+                    return false;
+                case ResourceType::PushConstants:
+                    errorStream << "ResourceType::PushConstants is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
+                    return false;
+                case ResourceType::RayTracingAccelStruct:
+                    errorStream << "ResourceType::RayTracingAccelStruct is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
+                    return false;
+                default:
+                    // Invalid resource types will be dealt with later in this function.
+                    break;
+                }
+            }
+            else if (pBindlessLayoutDesc->layoutType == BindlessLayoutDesc::LayoutType::MutableCounters)
+            {
+                if (binding.type != ResourceType::StructuredBuffer_UAV)
+                {
+                    errorStream << "Only ResourceType::StructuredBuffer_UAV can be used for bindless layouts with LayoutType::MutableCounters." << std::endl;
+                    return false;
+                }
+            }
+            else if (pBindlessLayoutDesc->layoutType == BindlessLayoutDesc::LayoutType::MutableSampler)
+            {
+                if (binding.type != ResourceType::Sampler)
+                {
+                    errorStream << "Only ResourceType::Sampler can be used for bindless layouts with LayoutType::MutableSampler." << std::endl;
+                    return false;
+                }
+            }
+        }
+
         switch (binding.type)
         {
         case ResourceType::None:
@@ -1613,16 +1832,19 @@ namespace nvrhi::validation
 
         std::stringstream errorStream;
         bool anyErrors = false;
+        bool const ignoreRegisterSpaces = (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11);
 
         BindingSummary layoutBindings;
         BindingLocationSet layoutDuplicates;
 
-        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc, layoutBindings, layoutDuplicates);
+        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc, ignoreRegisterSpaces,
+            layoutBindings, layoutDuplicates);
 
         BindingSummary setBindings;
         BindingLocationSet setDuplicates;
 
-        FillBindingSetSummary(m_MessageCallback, desc, layoutDesc->registerSpace, setBindings, setDuplicates);
+        FillBindingSetSummary(m_MessageCallback, desc, ignoreRegisterSpaces, layoutDesc->registerSpace,
+            setBindings, setDuplicates);
 
         BindingLocationSet declaredNotBound;
         BindingLocationSet boundNotDeclared;
@@ -1650,7 +1872,7 @@ namespace nvrhi::validation
 
         for (size_t index = 0; index < desc.bindings.size(); index++)
         {
-            if (!validateBindingSetItem(desc.bindings[index], false, errorStream))
+            if (!validateBindingSetItem(desc.bindings[index], nullptr, errorStream))
                 anyErrors = true;
         }
 
@@ -1690,7 +1912,7 @@ namespace nvrhi::validation
     {
         std::stringstream errorStream;
         
-        if (!validateBindingSetItem(item, true, errorStream))
+        if (!validateBindingSetItem(item, descriptorTable, errorStream))
         {
             error(errorStream.str());
             return false;
@@ -2076,6 +2298,28 @@ namespace nvrhi::validation
     FormatSupport DeviceWrapper::queryFormatSupport(Format format)
     {
         return m_Device->queryFormatSupport(format);
+    }
+
+    coopvec::DeviceFeatures DeviceWrapper::queryCoopVecFeatures()
+    {
+        return m_Device->queryCoopVecFeatures();
+    }
+
+    size_t DeviceWrapper::getCoopVecMatrixSize(coopvec::DataType type, coopvec::MatrixLayout layout, int rows, int columns)
+    {
+        if (!m_Device->queryFeatureSupport(Feature::CooperativeVectorInferencing))
+        {
+            error("getCoopVecMatrixSize: Cooperative Vectors are not supported by the device");
+            return 0;
+        }
+
+        if (rows <= 0 || columns <= 0)
+        {
+            error("getCoopVecMatrixSize: rows and columns must be positive");
+            return 0;
+        }
+        
+        return m_Device->getCoopVecMatrixSize(type, layout, rows, columns);
     }
 
     Object DeviceWrapper::getNativeQueue(ObjectType objectType, CommandQueue queue)

@@ -25,10 +25,6 @@
 
 namespace nvrhi::vulkan
 {
-
-    template <typename T>
-    using attachment_vector = nvrhi::static_vector<T, c_MaxRenderTargets + 1>; // render targets + depth
-
     static TextureDimension getDimensionForFramebuffer(TextureDimension dimension, bool isArray)
     {
         // Can't render into cubes and 3D textures directly, convert them to 2D arrays
@@ -59,18 +55,9 @@ namespace nvrhi::vulkan
 
     FramebufferHandle Device::createFramebuffer(const FramebufferDesc& desc)
     {
-        Framebuffer *fb = new Framebuffer(m_Context);
+        Framebuffer *fb = new Framebuffer();
         fb->desc = desc;
         fb->framebufferInfo = FramebufferInfoEx(desc);
-
-        attachment_vector<vk::AttachmentDescription2> attachmentDescs(desc.colorAttachments.size());
-        attachment_vector<vk::AttachmentReference2> colorAttachmentRefs(desc.colorAttachments.size());
-        vk::AttachmentReference2 depthAttachmentRef;
-
-        static_vector<vk::ImageView, c_MaxRenderTargets + 1> attachmentViews;
-        attachmentViews.resize(desc.colorAttachments.size());
-
-        uint32_t numArraySlices = 0;
 
         for(uint32_t i = 0; i < desc.colorAttachments.size(); i++)
         {
@@ -80,33 +67,20 @@ namespace nvrhi::vulkan
             assert(fb->framebufferInfo.width == std::max(t->desc.width >> rt.subresources.baseMipLevel, 1u));
             assert(fb->framebufferInfo.height == std::max(t->desc.height >> rt.subresources.baseMipLevel, 1u));
 
-            const vk::Format attachmentFormat = (rt.format == Format::UNKNOWN ? t->imageInfo.format : vk::Format(convertFormat(rt.format)));
-
-            attachmentDescs[i] = vk::AttachmentDescription2()
-                                        .setFormat(attachmentFormat)
-                                        .setSamples(t->imageInfo.samples)
-                                        .setLoadOp(vk::AttachmentLoadOp::eLoad)
-                                        .setStoreOp(vk::AttachmentStoreOp::eStore)
-                                        .setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal)
-                                        .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal);
-
-            colorAttachmentRefs[i] = vk::AttachmentReference2()
-                                        .setAttachment(i)
-                                        .setLayout(vk::ImageLayout::eColorAttachmentOptimal);
-
             TextureSubresourceSet subresources = rt.subresources.resolve(t->desc, true);
 
             TextureDimension dimension = getDimensionForFramebuffer(t->desc.dimension, subresources.numArraySlices > 1);
 
             const auto& view = t->getSubresourceView(subresources, dimension, rt.format, vk::ImageUsageFlagBits::eColorAttachment);
-            attachmentViews[i] = view.view;
+            
+            vk::RenderingAttachmentInfo& attachmentInfo = fb->colorAttachments.emplace_back();
+            attachmentInfo = vk::RenderingAttachmentInfo()
+                .setImageView(view.view)
+                .setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setLoadOp(vk::AttachmentLoadOp::eLoad)
+                .setStoreOp(vk::AttachmentStoreOp::eStore);
 
             fb->resources.push_back(rt.texture);
-
-            if (numArraySlices)
-                assert(numArraySlices == subresources.numArraySlices);
-            else
-                numArraySlices = subresources.numArraySlices;
         }
 
         // add depth/stencil attachment if present
@@ -125,166 +99,51 @@ namespace nvrhi::vulkan
                 depthLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal;
             }
 
-            attachmentDescs.push_back(vk::AttachmentDescription2()
-                                        .setFormat(texture->imageInfo.format)
-                                        .setSamples(texture->imageInfo.samples)
-                                        .setLoadOp(vk::AttachmentLoadOp::eLoad)
-                                        .setStoreOp(vk::AttachmentStoreOp::eStore)
-                                        .setInitialLayout(depthLayout)
-                                        .setFinalLayout(depthLayout));
-
-            depthAttachmentRef = vk::AttachmentReference2()
-                                    .setAttachment(uint32_t(attachmentDescs.size()) - 1)
-                                    .setLayout(depthLayout);
-
             TextureSubresourceSet subresources = att.subresources.resolve(texture->desc, true);
 
             TextureDimension dimension = getDimensionForFramebuffer(texture->desc.dimension, subresources.numArraySlices > 1);
 
             const auto& view = texture->getSubresourceView(subresources, dimension, att.format, vk::ImageUsageFlagBits::eDepthStencilAttachment);
-            attachmentViews.push_back(view.view);
 
+            fb->depthAttachment = vk::RenderingAttachmentInfo()
+                .setImageView(view.view)
+                .setImageLayout(depthLayout)
+                .setLoadOp(vk::AttachmentLoadOp::eLoad)
+                .setStoreOp(vk::AttachmentStoreOp::eStore);
+
+            if (getFormatInfo(texture->desc.format).hasStencil)
+                fb->stencilAttachment = fb->depthAttachment;
+                
             fb->resources.push_back(att.texture);
-
-            if (numArraySlices)
-                assert(numArraySlices == subresources.numArraySlices);
-            else
-                numArraySlices = subresources.numArraySlices;
         }
 
-        auto subpass = vk::SubpassDescription2()
-            .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
-            .setColorAttachmentCount(uint32_t(desc.colorAttachments.size()))
-            .setPColorAttachments(colorAttachmentRefs.data())
-            .setPDepthStencilAttachment(desc.depthAttachment.valid() ? &depthAttachmentRef : nullptr);
-
         // add VRS attachment
-        // declare the structures here to avoid using pointers to out-of-scope objects in renderPassInfo further
-        vk::AttachmentReference2 vrsAttachmentRef;
-        vk::FragmentShadingRateAttachmentInfoKHR shadingRateAttachmentInfo;
-
         if (desc.shadingRateAttachment.valid())
         {
             const auto& vrsAttachment = desc.shadingRateAttachment;
             Texture* vrsTexture = checked_cast<Texture*>(vrsAttachment.texture);
             assert(vrsTexture->imageInfo.format == vk::Format::eR8Uint);
             assert(vrsTexture->imageInfo.samples == vk::SampleCountFlagBits::e1);
-            auto vrsAttachmentDesc = vk::AttachmentDescription2()
-                .setFormat(vk::Format::eR8Uint)
-                .setSamples(vk::SampleCountFlagBits::e1)
-                .setLoadOp(vk::AttachmentLoadOp::eLoad)
-                .setStoreOp(vk::AttachmentStoreOp::eStore)
-                .setInitialLayout(vk::ImageLayout::eFragmentShadingRateAttachmentOptimalKHR)
-                .setFinalLayout(vk::ImageLayout::eFragmentShadingRateAttachmentOptimalKHR);
-
-            attachmentDescs.push_back(vrsAttachmentDesc);
 
             TextureSubresourceSet subresources = vrsAttachment.subresources.resolve(vrsTexture->desc, true);
             TextureDimension dimension = getDimensionForFramebuffer(vrsTexture->desc.dimension, subresources.numArraySlices > 1);
 
             const auto& view = vrsTexture->getSubresourceView(subresources, dimension, vrsAttachment.format, vk::ImageUsageFlagBits::eFragmentShadingRateAttachmentKHR);
-            attachmentViews.push_back(view.view);
-
-            fb->resources.push_back(vrsAttachment.texture);
-
-            if (numArraySlices)
-                assert(numArraySlices == subresources.numArraySlices);
-            else
-                numArraySlices = subresources.numArraySlices;
 
             auto rateProps = vk::PhysicalDeviceFragmentShadingRatePropertiesKHR();
             auto props = vk::PhysicalDeviceProperties2();
             props.pNext = &rateProps;
             m_Context.physicalDevice.getProperties2(&props);
 
-            vrsAttachmentRef = vk::AttachmentReference2()
-                .setAttachment(uint32_t(attachmentDescs.size()) - 1)
-                .setLayout(vk::ImageLayout::eFragmentShadingRateAttachmentOptimalKHR);
-
-            shadingRateAttachmentInfo = vk::FragmentShadingRateAttachmentInfoKHR()
-                .setPFragmentShadingRateAttachment(&vrsAttachmentRef)
+            fb->shadingRateAttachment = vk::RenderingFragmentShadingRateAttachmentInfoKHR()
+                .setImageLayout(vk::ImageLayout::eFragmentShadingRateAttachmentOptimalKHR)
+                .setImageView(view.view)
                 .setShadingRateAttachmentTexelSize(rateProps.minFragmentShadingRateAttachmentTexelSize);
 
-            subpass.setPNext(&shadingRateAttachmentInfo);
+            fb->resources.push_back(vrsAttachment.texture);
         }
-
-        auto renderPassInfo = vk::RenderPassCreateInfo2()
-                    .setAttachmentCount(uint32_t(attachmentDescs.size()))
-                    .setPAttachments(attachmentDescs.data())
-                    .setSubpassCount(1)
-                    .setPSubpasses(&subpass);
-
-        vk::Result res = m_Context.device.createRenderPass2(&renderPassInfo,
-                                                           m_Context.allocationCallbacks,
-                                                           &fb->renderPass);
-        CHECK_VK_FAIL(res)
-        
-        // set up the framebuffer object
-        auto framebufferInfo = vk::FramebufferCreateInfo()
-                                .setRenderPass(fb->renderPass)
-                                .setAttachmentCount(uint32_t(attachmentViews.size()))
-                                .setPAttachments(attachmentViews.data())
-                                .setWidth(fb->framebufferInfo.width)
-                                .setHeight(fb->framebufferInfo.height)
-                                .setLayers(numArraySlices);
-
-        res = m_Context.device.createFramebuffer(&framebufferInfo, m_Context.allocationCallbacks,
-                                               &fb->framebuffer);
-        CHECK_VK_FAIL(res)
         
         return FramebufferHandle::Create(fb);
-    }
-
-    FramebufferHandle Device::createHandleForNativeFramebuffer(VkRenderPass renderPass, VkFramebuffer framebuffer,
-        const FramebufferDesc& desc, bool transferOwnership)
-    {
-        Framebuffer* fb = new Framebuffer(m_Context);
-        fb->desc = desc;
-        fb->framebufferInfo = FramebufferInfoEx(desc);
-        fb->renderPass = renderPass;
-        fb->framebuffer = framebuffer;
-        fb->managed = transferOwnership;
-
-        for (const auto& rt : desc.colorAttachments)
-        {
-            if (rt.valid())
-                fb->resources.push_back(rt.texture);
-        }
-
-        if (desc.depthAttachment.valid())
-        {
-            fb->resources.push_back(desc.depthAttachment.texture);
-        }
-
-        return FramebufferHandle::Create(fb);
-    }
-
-    Framebuffer::~Framebuffer()
-    {
-        if (framebuffer && managed)
-        {
-            m_Context.device.destroyFramebuffer(framebuffer);
-            framebuffer = nullptr;
-        }
-
-        if (renderPass && managed)
-        {
-            m_Context.device.destroyRenderPass(renderPass);
-            renderPass = nullptr;
-        }
-    }
-
-    Object Framebuffer::getNativeObject(ObjectType objectType)
-    {
-        switch (objectType)
-        {
-        case ObjectTypes::VK_RenderPass:
-            return Object(renderPass);
-        case ObjectTypes::VK_Framebuffer:
-            return Object(framebuffer);
-        default:
-            return nullptr;
-        }
     }
 
     void countSpecializationConstants(
@@ -354,7 +213,7 @@ namespace nvrhi::vulkan
         return shaderStageCreateInfo;
     }
 
-    GraphicsPipelineHandle Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc, IFramebuffer* _fb)
+    GraphicsPipelineHandle Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc, FramebufferInfo const& fbinfo)
     {
         if (desc.renderState.singlePassStereo.enabled)
         {
@@ -364,13 +223,11 @@ namespace nvrhi::vulkan
 
         vk::Result res;
 
-        Framebuffer* fb = checked_cast<Framebuffer*>(_fb);
-        
         InputLayout* inputLayout = checked_cast<InputLayout*>(desc.inputLayout.Get());
 
         GraphicsPipeline *pso = new GraphicsPipeline(m_Context);
         pso->desc = desc;
-        pso->framebufferInfo = fb->framebufferInfo;
+        pso->framebufferInfo = fbinfo;
 
         Shader* VS = checked_cast<Shader*>(desc.VS.Get());
         Shader* HS = checked_cast<Shader*>(desc.HS.Get());
@@ -482,7 +339,7 @@ namespace nvrhi::vulkan
 		}
 
         auto multisample = vk::PipelineMultisampleStateCreateInfo()
-                            .setRasterizationSamples(vk::SampleCountFlagBits(fb->framebufferInfo.sampleCount))
+                            .setRasterizationSamples(vk::SampleCountFlagBits(fbinfo.sampleCount))
                             .setAlphaToCoverageEnable(blendState.alphaToCoverageEnable);
 
         auto depthStencil = vk::PipelineDepthStencilStateCreateInfo()
@@ -494,7 +351,10 @@ namespace nvrhi::vulkan
                                 .setBack(convertStencilState(depthStencilState, depthStencilState.backFaceStencil));
 
         // VRS state
-        std::array<vk::FragmentShadingRateCombinerOpKHR, 2> combiners = { convertShadingRateCombiner(desc.shadingRateState.pipelinePrimitiveCombiner), convertShadingRateCombiner(desc.shadingRateState.imageCombiner) };
+        std::array<vk::FragmentShadingRateCombinerOpKHR, 2> combiners = {
+            convertShadingRateCombiner(desc.shadingRateState.pipelinePrimitiveCombiner),
+            convertShadingRateCombiner(desc.shadingRateState.imageCombiner)
+        };
         auto shadingRateState = vk::PipelineFragmentShadingRateStateCreateInfoKHR()
             .setCombinerOps(combiners)
             .setFragmentSize(convertFragmentShadingRate(desc.shadingRateState.shadingRate));
@@ -508,9 +368,9 @@ namespace nvrhi::vulkan
             desc.bindingLayouts);
         CHECK_VK_FAIL(res)
 
-        attachment_vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachments(fb->desc.colorAttachments.size());
+        static_vector<vk::PipelineColorBlendAttachmentState, c_MaxRenderTargets> colorBlendAttachments(fbinfo.colorFormats.size());
 
-        for(uint32_t i = 0; i < uint32_t(fb->desc.colorAttachments.size()); i++)
+        for(uint32_t i = 0; i < uint32_t(fbinfo.colorFormats.size()); i++)
         {
             colorBlendAttachments[i] = convertBlendState(blendState.targets[i]);
         }
@@ -519,7 +379,7 @@ namespace nvrhi::vulkan
                             .setAttachmentCount(uint32_t(colorBlendAttachments.size()))
                             .setPAttachments(colorBlendAttachments.data());
 
-        pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fb->desc.colorAttachments.size()));
+        pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fbinfo.colorFormats.size()));
 
         static_vector<vk::DynamicState, 6> dynamicStates = {
             vk::DynamicState::eViewport,
@@ -538,7 +398,21 @@ namespace nvrhi::vulkan
             .setDynamicStateCount(uint32_t(dynamicStates.size()))
             .setPDynamicStates(dynamicStates.data());
 
+        std::array<vk::Format, c_MaxRenderTargets> colorFormats;
+        for (size_t i = 0; i < fbinfo.colorFormats.size(); i++)
+            colorFormats[i] = vk::Format(convertFormat(fbinfo.colorFormats[i]));
+
+        FormatInfo const& depthStencilFormatInfo = getFormatInfo(fbinfo.depthFormat);
+        vk::Format depthStencilFormat = vk::Format(convertFormat(fbinfo.depthFormat));
+
+        auto renderingInfo = vk::PipelineRenderingCreateInfo()
+            .setColorAttachmentCount(uint32_t(fbinfo.colorFormats.size()))
+            .setPColorAttachmentFormats(colorFormats.data())
+            .setDepthAttachmentFormat(depthStencilFormatInfo.hasDepth ? depthStencilFormat : vk::Format::eUndefined)
+            .setStencilAttachmentFormat(depthStencilFormatInfo.hasStencil ? depthStencilFormat : vk::Format::eUndefined);
+
         auto pipelineInfo = vk::GraphicsPipelineCreateInfo()
+            .setPNext(&renderingInfo)
             .setStageCount(uint32_t(shaderStages.size()))
             .setPStages(shaderStages.data())
             .setPVertexInputState(&vertexInput)
@@ -550,14 +424,12 @@ namespace nvrhi::vulkan
             .setPColorBlendState(&colorBlend)
             .setPDynamicState(&dynamicStateInfo)
             .setLayout(pso->pipelineLayout)
-            .setRenderPass(fb->renderPass)
-            .setSubpass(0)
             .setBasePipelineHandle(nullptr)
             .setBasePipelineIndex(-1)
             .setPTessellationState(nullptr);
 
         if (pso->desc.shadingRateState.enabled)
-            pipelineInfo.setPNext(&shadingRateState);
+            renderingInfo.setPNext(&shadingRateState);
 
         auto tessellationState = vk::PipelineTessellationStateCreateInfo();
 
@@ -575,6 +447,14 @@ namespace nvrhi::vulkan
         CHECK_VK_FAIL(res);
         
         return GraphicsPipelineHandle::Create(pso);
+    }
+
+    GraphicsPipelineHandle Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc, IFramebuffer* fb)
+    {
+        if (!fb)
+            return nullptr;
+            
+        return createGraphicsPipeline(desc, fb->getFramebufferInfo());
     }
 
     GraphicsPipeline::~GraphicsPipeline()
@@ -605,11 +485,37 @@ namespace nvrhi::vulkan
         }
     }
 
+    void CommandList::beginRenderPass(nvrhi::IFramebuffer* _framebuffer)
+    {
+        endRenderPass();
+
+        Framebuffer* framebuffer = checked_cast<Framebuffer*>(_framebuffer);
+
+        if (!framebuffer)
+            return;
+
+        m_CurrentGraphicsState.framebuffer = framebuffer;
+        m_CurrentMeshletState.framebuffer = framebuffer;
+
+        vk::RenderingInfo renderingInfo = vk::RenderingInfo()
+            .setRenderArea(vk::Rect2D()
+                .setOffset(vk::Offset2D(0, 0))
+                .setExtent(vk::Extent2D(framebuffer->framebufferInfo.width, framebuffer->framebufferInfo.height)))
+            .setLayerCount(framebuffer->framebufferInfo.arraySize)
+            .setColorAttachmentCount(uint32_t(framebuffer->colorAttachments.size()))
+            .setPColorAttachments(framebuffer->colorAttachments.data())
+            .setPDepthAttachment(framebuffer->depthAttachment.imageView ? &framebuffer->depthAttachment : nullptr)
+            .setPStencilAttachment(framebuffer->stencilAttachment.imageView ? &framebuffer->stencilAttachment : nullptr);
+        
+        m_CurrentCmdBuf->cmdBuf.beginRendering(renderingInfo);
+        m_CurrentCmdBuf->referencedResources.push_back(framebuffer);
+    }
+
     void CommandList::endRenderPass()
     {
         if (m_CurrentGraphicsState.framebuffer || m_CurrentMeshletState.framebuffer)
         {
-            m_CurrentCmdBuf->cmdBuf.endRenderPass();
+            m_CurrentCmdBuf->cmdBuf.endRendering();
             m_CurrentGraphicsState.framebuffer = nullptr;
             m_CurrentMeshletState.framebuffer = nullptr;
         }
@@ -617,7 +523,6 @@ namespace nvrhi::vulkan
 
     static vk::Viewport VKViewportWithDXCoords(const Viewport& v)
     {
-        // requires VK_KHR_maintenance1 which allows negative-height to indicate an inverted coord space to match DX
         return vk::Viewport(v.minX, v.maxY, v.maxX - v.minX, -(v.maxY - v.minY), v.minZ, v.maxZ);
     }
 
@@ -630,7 +535,7 @@ namespace nvrhi::vulkan
 
         if (m_EnableAutomaticBarriers)
         {
-            trackResourcesAndBarriers(state);
+            insertGraphicsResourceBarriers(state);
         }
 
         bool anyBarriers = this->anyBarriers();
@@ -649,32 +554,17 @@ namespace nvrhi::vulkan
             endRenderPass();
         }
 
-        auto desc = state.framebuffer->getDesc();
-        if (desc.shadingRateAttachment.valid())
-        {
-            setTextureState(desc.shadingRateAttachment.texture, nvrhi::TextureSubresourceSet(0, 1, 0, 1), nvrhi::ResourceStates::ShadingRateSurface);
-        }
-
         commitBarriers();
 
         if(!m_CurrentGraphicsState.framebuffer)
         {
-            m_CurrentCmdBuf->cmdBuf.beginRenderPass(vk::RenderPassBeginInfo()
-                .setRenderPass(fb->renderPass)
-                .setFramebuffer(fb->framebuffer)
-                .setRenderArea(vk::Rect2D()
-                    .setOffset(vk::Offset2D(0, 0))
-                    .setExtent(vk::Extent2D(fb->framebufferInfo.width, fb->framebufferInfo.height)))
-                .setClearValueCount(0),
-                vk::SubpassContents::eInline);
-
-            m_CurrentCmdBuf->referencedResources.push_back(state.framebuffer);
+            beginRenderPass(fb);
         }
 
         m_CurrentPipelineLayout = pso->pipelineLayout;
         m_CurrentPushConstantsVisibility = pso->pushConstantVisibility;
 
-        if (arraysAreDifferent(m_CurrentComputeState.bindings, state.bindings) || m_AnyVolatileBufferWrites)
+        if (arraysAreDifferent(m_CurrentGraphicsState.bindings, state.bindings) || m_AnyVolatileBufferWrites)
         {
             bindBindingSets(vk::PipelineBindPoint::eGraphics, pso->pipelineLayout, state.bindings, pso->descriptorSetIdxToBindingIdx);
         }

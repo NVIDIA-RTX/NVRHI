@@ -24,22 +24,29 @@ if( TARGET aftermath )
 endif()
 
 if (NOT AFTERMATH_SEARCH_PATHS)
+    set(AFTERMATH_FETCH_DIR "" CACHE STRING "Directory to fetch aftermath sdk to, empty string uses build directory default")
+
     include(FetchContent)
     if(WIN32)
-        set(AFTERMATH_SDK_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2024_3_0/windows/NVIDIA_Nsight_Aftermath_SDK_2024.3.0.24312.zip)
-        set(AFTERMATH_SDK_MD5 232145E8A749F873B8EE32B9DA6F09D6)
+        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2025_1_0/windows/NVIDIA_Nsight_Aftermath_SDK_2025.1.0.25009.zip
+            CACHE STRING "Url to Aftermath SDK archive (.zip)")
+        set(AFTERMATH_FETCH_MD5 84101cad47eeb792c3b100e38d7ab453 CACHE STRING "MD5 Hash of Aftermath SDK archive")
     else()
-        set(AFTERMATH_SDK_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2024_3_0/linux/NVIDIA_Nsight_Aftermath_SDK_2024.3.0.24312.tgz)
-        set(AFTERMATH_SDK_MD5 C118C60F7A8D8302AF53513EA4FF1ABD)
+        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2025_1_0/linux/NVIDIA_Nsight_Aftermath_SDK_2025.1.0.25009.tgz
+            CACHE STRING "Url to Aftermath SDK archive (.tgz)")
+        set(AFTERMATH_FETCH_MD5 ec6253c807da34e55052574cb5db8726 CACHE STRING "MD5 Hash of Aftermath SDK archive")
     endif()
 
     FetchContent_Declare(
-        aftermath_sdk
-        URL ${AFTERMATH_SDK_URL}
-        URL_HASH MD5=${AFTERMATH_SDK_MD5}
-	DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-   set(AFTERMATH_SEARCH_PATHS "${CMAKE_BINARY_DIR}/_deps/aftermath_sdk-src/")
-   FetchContent_MakeAvailable(aftermath_sdk)
+        aftermath
+        URL ${AFTERMATH_FETCH_URL}
+        URL_HASH MD5=${AFTERMATH_FETCH_MD5}
+        SOURCE_DIR ${AFTERMATH_FETCH_DIR}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+   FetchContent_MakeAvailable(aftermath)
+   
+   message(STATUS "Updating aftermath from ${AFTERMATH_FETCH_URL} , md5 ${AFTERMATH_FETCH_MD5}, into folder ${aftermath_SOURCE_DIR}")
+   set(AFTERMATH_SEARCH_PATHS "${aftermath_SOURCE_DIR}")
 endif()
 
 find_path(AFTERMATH_INCLUDE_DIR GFSDK_Aftermath.h

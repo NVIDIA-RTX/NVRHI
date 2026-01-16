@@ -242,6 +242,8 @@ namespace nvrhi::validation
             rt::AccelStructBuildFlags buildFlags = rt::AccelStructBuildFlags::None) override;
         void executeMultiIndirectClusterOperation(const rt::cluster::OperationDesc& desc) override;
 
+        void convertCoopVecMatrices(coopvec::ConvertMatrixLayoutDesc const* convertDescs, size_t numDescs) override;
+
         void beginTimerQuery(ITimerQuery* query) override;
         void endTimerQuery(ITimerQuery* query) override;
 
@@ -288,10 +290,10 @@ namespace nvrhi::validation
         void error(const std::string& messageText) const;
         void warning(const std::string& messageText) const;
 
-        bool validateBindingSetItem(const BindingSetItem& binding, bool isDescriptorTable, std::stringstream& errorStream);
+        bool validateBindingSetItem(const BindingSetItem& binding, IDescriptorTable *pOptDescriptorTable, std::stringstream& errorStream);
         bool validatePipelineBindingLayouts(const static_vector<BindingLayoutHandle, c_MaxBindingLayouts>& bindingLayouts, const std::vector<IShader*>& shaders) const;
         bool validateShaderType(ShaderType expected, const ShaderDesc& shaderDesc, const char* function) const;
-        bool validateRenderState(const RenderState& renderState, IFramebuffer* fb) const;
+        bool validateRenderState(const RenderState& renderState, FramebufferInfo const& fbinfo) const;
 
         bool validateClusterOperationParams(const rt::cluster::OperationParams& params) const;
     public:
@@ -353,9 +355,13 @@ namespace nvrhi::validation
 
         FramebufferHandle createFramebuffer(const FramebufferDesc& desc) override;
 
+        GraphicsPipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc, FramebufferInfo const& fbinfo) override;
+
         GraphicsPipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc, IFramebuffer* fb) override;
 
         ComputePipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
+
+        MeshletPipelineHandle createMeshletPipeline(const MeshletPipelineDesc& desc, FramebufferInfo const& fbinfo) override;
 
         MeshletPipelineHandle createMeshletPipeline(const MeshletPipelineDesc& desc, IFramebuffer* fb) override;
 
@@ -383,6 +389,8 @@ namespace nvrhi::validation
         void runGarbageCollection() override;
         bool queryFeatureSupport(Feature feature, void* pInfo = nullptr, size_t infoSize = 0) override;
         FormatSupport queryFormatSupport(Format format) override;
+        coopvec::DeviceFeatures queryCoopVecFeatures() override;
+        size_t getCoopVecMatrixSize(coopvec::DataType type, coopvec::MatrixLayout layout, int rows, int columns) override;
         Object getNativeQueue(ObjectType objectType, CommandQueue queue) override;
         IMessageCallback* getMessageCallback() override;
         bool isAftermathEnabled() override;

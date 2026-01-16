@@ -171,6 +171,15 @@ namespace nvrhi
         subresources = subresources.resolve(texture->descRef, false);
 
         TextureState* tracking = getTextureStateTracking(texture, true);
+
+        if (tracking->subresourceStates.empty() && tracking->state == ResourceStates::Unknown)
+        {
+            std::stringstream ss;
+            ss << "Unknown prior state of texture " << utils::DebugNameToString(texture->descRef.debugName) << ". "
+                "Call CommandList::beginTrackingTextureState(...) before using the texture or use the "
+                "keepInitialState and initialState members of TextureDesc.";
+            m_MessageCallback->message(MessageSeverity::Error, ss.str().c_str());
+        }
         
         if (subresources.isEntireTexture(texture->descRef) && tracking->subresourceStates.empty())
         {
@@ -205,15 +214,6 @@ namespace nvrhi
             bool stateExpanded = false;
             if (tracking->subresourceStates.empty())
             {
-                if (tracking->state == ResourceStates::Unknown)
-                {
-                    std::stringstream ss;
-                    ss << "Unknown prior state of texture " << utils::DebugNameToString(texture->descRef.debugName) << ". "
-                        "Call CommandList::beginTrackingTextureState(...) before using the texture or use the "
-                        "keepInitialState and initialState members of TextureDesc.";
-                    m_MessageCallback->message(MessageSeverity::Error, ss.str().c_str());
-                }
-
                 tracking->subresourceStates.resize(texture->descRef.mipLevels * texture->descRef.arraySize, tracking->state);
                 tracking->state = ResourceStates::Unknown;
                 stateExpanded = true;

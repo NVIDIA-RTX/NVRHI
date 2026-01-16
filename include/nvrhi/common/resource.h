@@ -20,6 +20,8 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+#pragma once 
+
 #include <atomic>
 #include <cstdint>
 #include <type_traits>
@@ -74,7 +76,9 @@ namespace nvrhi
         constexpr ObjectType VK_AccelerationStructureKHR            = 0x0003000a;
         constexpr ObjectType VK_Sampler                             = 0x0003000b;
         constexpr ObjectType VK_ShaderModule                        = 0x0003000c;
+        [[deprecated]]
         constexpr ObjectType VK_RenderPass                          = 0x0003000d;
+        [[deprecated]]
         constexpr ObjectType VK_Framebuffer                         = 0x0003000e;
         constexpr ObjectType VK_DescriptorPool                      = 0x0003000f;
         constexpr ObjectType VK_DescriptorSetLayout                 = 0x00030010;
@@ -107,6 +111,7 @@ namespace nvrhi
     public:
         virtual unsigned long AddRef() = 0;
         virtual unsigned long Release() = 0;
+        virtual unsigned long GetRefCount() = 0;
 
         // Returns a native object or interface, for example ID3D11Device*, or nullptr if the requested interface is unavailable.
         // Does *not* AddRef the returned interface.
@@ -384,6 +389,11 @@ namespace nvrhi
                 delete this;
             }
             return result;
+        }
+
+        virtual unsigned long GetRefCount() override 
+        {
+            return m_refCount.load();
         }
     };
 

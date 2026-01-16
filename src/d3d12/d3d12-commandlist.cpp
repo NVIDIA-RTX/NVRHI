@@ -104,6 +104,9 @@ namespace nvrhi::d3d12
 
         commandList->commandList->QueryInterface(IID_PPV_ARGS(&commandList->commandList4));
         commandList->commandList->QueryInterface(IID_PPV_ARGS(&commandList->commandList6));
+#if NVRHI_D3D12_WITH_COOPVEC
+        commandList->commandList->QueryInterface(IID_PPV_ARGS(&commandList->commandListPreview));
+#endif
 
 #if NVRHI_WITH_AFTERMATH
         if (m_Device->isAftermathEnabled())
@@ -321,7 +324,7 @@ namespace nvrhi::d3d12
 
         m_CurrentUploadBuffer = nullptr;
         m_VolatileConstantBufferAddresses.clear();
-        m_ShaderTableStates.clear();
+        m_UncachedShaderTableStates.clear();
     }
 
     std::shared_ptr<CommandListInstance> CommandList::executed(Queue* pQueue)
@@ -365,4 +368,65 @@ namespace nvrhi::d3d12
         return instance;
     }
 
+    void CommandList::convertCoopVecMatrices(coopvec::ConvertMatrixLayoutDesc const* convertDescs, size_t numDescs)
+    {
+#if NVRHI_D3D12_WITH_COOPVEC
+        if (numDescs == 0)
+            return;
+            
+        if (!m_ActiveCommandList->commandListPreview)
+            return;
+        
+        std::vector<D3D12_LINEAR_ALGEBRA_MATRIX_CONVERSION_INFO> d3dConvertDescs;
+        d3dConvertDescs.reserve(numDescs);
+
+        for (size_t i = 0; i < numDescs; ++i)
+        {
+            coopvec::ConvertMatrixLayoutDesc const& desc = convertDescs[i];
+            if (desc.src.buffer == nullptr || desc.dst.buffer == nullptr)
+                continue;
+            
+            if (m_EnableAutomaticBarriers)
+            {
+                requireBufferState(desc.src.buffer, ResourceStates::ConvertCoopVecMatrixInput);
+                requireBufferState(desc.dst.buffer, ResourceStates::ConvertCoopVecMatrixOutput);
+                m_BindingStatesDirty = true;
+            }
+
+            D3D12_LINEAR_ALGEBRA_MATRIX_CONVERSION_INFO& d3dDesc = d3dConvertDescs.emplace_back();
+
+            d3dDesc.SrcInfo.SrcSize = UINT(desc.src.size);
+            d3dDesc.SrcInfo.SrcDataType = convertCoopVecDataType(desc.src.type);
+            d3dDesc.SrcInfo.SrcLayout = convertCoopVecMatrixLayout(desc.src.layout);
+            d3dDesc.SrcInfo.SrcStride = desc.src.stride != 0
+                ? UINT(desc.src.stride)
+                : UINT(coopvec::getOptimalMatrixStride(desc.src.type, desc.src.layout, desc.numRows, desc.numColumns));
+
+            d3dDesc.DestInfo.DestSize = UINT(desc.dst.size);
+            d3dDesc.DestInfo.DestLayout = convertCoopVecMatrixLayout(desc.dst.layout);
+            d3dDesc.DestInfo.DestStride = desc.dst.stride != 0
+                ? UINT(desc.dst.stride)
+                : UINT(coopvec::getOptimalMatrixStride(desc.dst.type, desc.dst.layout, desc.numRows, desc.numColumns));
+            d3dDesc.DestInfo.NumColumns = desc.numColumns;
+            d3dDesc.DestInfo.NumRows = desc.numRows;
+            d3dDesc.DestInfo.DestDataType = convertCoopVecDataType(desc.dst.type);
+
+            d3dDesc.DataDesc.SrcVA = desc.src.buffer->getGpuVirtualAddress() + desc.src.offset;
+            d3dDesc.DataDesc.DestVA = desc.dst.buffer->getGpuVirtualAddress() + desc.dst.offset;
+        }
+
+        commitBarriers();
+
+        if (!d3dConvertDescs.empty())
+        {
+            m_ActiveCommandList->commandListPreview->ConvertLinearAlgebraMatrix(
+                d3dConvertDescs.data(),
+                UINT(d3dConvertDescs.size()));
+        }
+#else
+        (void)convertDescs;
+        (void)numDescs;
+        utils::NotSupported();
+#endif        
+    }
 } // namespace nvrhi::d3d12

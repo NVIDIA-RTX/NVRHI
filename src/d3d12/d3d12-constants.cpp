@@ -104,7 +104,7 @@ namespace nvrhi::d3d12
         {
         case BlendOp::Add:
             return D3D12_BLEND_OP_ADD;
-        case BlendOp::Subrtact:
+        case BlendOp::Subtract:
             return D3D12_BLEND_OP_SUBTRACT;
         case BlendOp::ReverseSubtract:
             return D3D12_BLEND_OP_REV_SUBTRACT;
@@ -269,6 +269,8 @@ namespace nvrhi::d3d12
         if ((stateBits & ResourceStates::ShadingRateSurface) != 0) result |= D3D12_RESOURCE_STATE_SHADING_RATE_SOURCE;
         if ((stateBits & ResourceStates::OpacityMicromapBuildInput) != 0) result |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         if ((stateBits & ResourceStates::OpacityMicromapWrite) != 0) result |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+        if ((stateBits & ResourceStates::ConvertCoopVecMatrixInput) != 0) result |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        if ((stateBits & ResourceStates::ConvertCoopVecMatrixOutput) != 0) result |= D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
         return result;
     }
@@ -312,5 +314,93 @@ namespace nvrhi::d3d12
             return D3D12_SHADING_RATE_COMBINER_PASSTHROUGH;
         }
     }
+
+#if NVRHI_D3D12_WITH_COOPVEC
+    D3D12_LINEAR_ALGEBRA_DATATYPE convertCoopVecDataType(coopvec::DataType type)
+    {
+        switch (type)
+        {
+        case coopvec::DataType::UInt8:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_UINT8;
+        case coopvec::DataType::SInt8:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_SINT8;
+        case coopvec::DataType::UInt8Packed:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_UINT8_T4_PACKED;
+        case coopvec::DataType::SInt8Packed:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_SINT8_T4_PACKED;
+        case coopvec::DataType::UInt16:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_UINT16;
+        case coopvec::DataType::SInt16:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_SINT16;
+        case coopvec::DataType::UInt32:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_UINT32;
+        case coopvec::DataType::SInt32:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_SINT32;
+        case coopvec::DataType::FloatE4M3:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT_E4M3;
+        case coopvec::DataType::FloatE5M2:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT_E5M2;
+        case coopvec::DataType::Float16:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT16;
+        case coopvec::DataType::Float32:
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT32;
+        default:
+            utils::InvalidEnum();
+            return D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT32;
+        }
+    }
+
+    coopvec::DataType convertCoopVecDataType(D3D12_LINEAR_ALGEBRA_DATATYPE type)
+    {
+        switch (type)
+        {
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_UINT8:
+            return coopvec::DataType::UInt8;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_SINT8:
+            return coopvec::DataType::SInt8;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_UINT8_T4_PACKED:
+            return coopvec::DataType::UInt8Packed;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_SINT8_T4_PACKED:
+            return coopvec::DataType::SInt8Packed;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_UINT16:
+            return coopvec::DataType::UInt16;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_SINT16:
+            return coopvec::DataType::SInt16;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_UINT32:
+            return coopvec::DataType::UInt32;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_SINT32:
+            return coopvec::DataType::SInt32;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT_E4M3:
+            return coopvec::DataType::FloatE4M3;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT_E5M2:
+            return coopvec::DataType::FloatE5M2;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT16:
+            return coopvec::DataType::Float16;
+        case D3D12_LINEAR_ALGEBRA_DATATYPE_FLOAT32:
+            return coopvec::DataType::Float32;
+        default:
+            utils::InvalidEnum();
+            return coopvec::DataType::Float32;
+        }
+    }
+    
+    D3D12_LINEAR_ALGEBRA_MATRIX_LAYOUT convertCoopVecMatrixLayout(coopvec::MatrixLayout layout)
+    {
+        switch (layout)
+        {
+        case coopvec::MatrixLayout::RowMajor:
+            return D3D12_LINEAR_ALGEBRA_MATRIX_LAYOUT_ROW_MAJOR;
+        case coopvec::MatrixLayout::ColumnMajor:
+            return D3D12_LINEAR_ALGEBRA_MATRIX_LAYOUT_COLUMN_MAJOR;
+        case coopvec::MatrixLayout::InferencingOptimal:
+            return D3D12_LINEAR_ALGEBRA_MATRIX_LAYOUT_MUL_OPTIMAL;
+        case coopvec::MatrixLayout::TrainingOptimal:
+            return D3D12_LINEAR_ALGEBRA_MATRIX_LAYOUT_OUTER_PRODUCT_OPTIMAL;
+        default:
+            utils::InvalidEnum();
+            return D3D12_LINEAR_ALGEBRA_MATRIX_LAYOUT_ROW_MAJOR;
+        }
+    }
+#endif
 
 } // namespace nvrhi::d3d12

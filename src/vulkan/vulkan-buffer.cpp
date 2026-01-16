@@ -161,6 +161,41 @@ namespace nvrhi::vulkan
             }
         }
 
+        if (m_Context.logBufferLifetime)
+        {
+            size_t byteDisplay = desc.byteSize;
+            const char* byteUnit = "B";
+
+            if (desc.byteSize > (1 << 20))
+            {
+                byteDisplay = desc.byteSize >> 20;
+                byteUnit = "MB";
+            }
+            else if (desc.byteSize > (1 << 10))
+            {
+                byteDisplay = desc.byteSize >> 10;
+                byteUnit = "KB";
+            }
+
+            std::stringstream ss;
+            ss << "Create buffer: " << desc.debugName
+                << " Buf:0x" << std::hex << reinterpret_cast<uintptr_t>(VkBuffer(buffer->buffer))
+                << " Gpu:0x" << std::hex << buffer->getGpuVirtualAddress() << "->0x" << std::hex << buffer->getGpuVirtualAddress() + desc.byteSize;
+
+            if (desc.structStride)
+            {
+                ss << " (n:" << std::dec << (desc.structStride ? desc.byteSize / desc.structStride : 0)
+                    << " stride:" << std::dec << desc.structStride
+                    << "B size:" << std::dec << byteDisplay << byteUnit << ")";
+            }
+            else
+            {
+                ss << " (size:" << std::dec << byteDisplay << byteUnit << ")";
+            }
+
+            m_Context.info(ss.str());
+        }
+
         return BufferHandle::Create(buffer);
     }
 
@@ -176,6 +211,13 @@ namespace nvrhi::vulkan
         buffer->buffer = VkBuffer(_buffer.integer);
         buffer->desc = desc;
         buffer->managed = false;
+        
+        if (m_Context.extensions.buffer_device_address)
+        {
+            auto addressInfo = vk::BufferDeviceAddressInfo().setBuffer(buffer->buffer);
+
+            buffer->deviceAddress = m_Context.device.getBufferAddress(addressInfo);
+        }
 
         return BufferHandle::Create(buffer);
     }
@@ -206,6 +248,7 @@ namespace nvrhi::vulkan
         {
             requireBufferState(src, ResourceStates::CopySource);
             requireBufferState(dest, ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -406,8 +449,6 @@ namespace nvrhi::vulkan
 
         assert(m_CurrentCmdBuf);
 
-        endRenderPass();
-
         m_CurrentCmdBuf->referencedResources.push_back(buffer);
 
         if (buffer->desc.isVolatile)
@@ -419,6 +460,10 @@ namespace nvrhi::vulkan
             return;
         }
 
+        // Per Vulkan spec, vkCmdUpdateBuffer is only allowed outside of a render pass, so end it here.
+        // Note that writeVolatileBuffer above is permitted so don't end the render pass for that case.
+        endRenderPass();
+
         const size_t vkCmdUpdateBufferLimit = 65536;
 
         // Per Vulkan spec, vkCmdUpdateBuffer requires that the data size is smaller than or equal to 64 kB,
@@ -429,6 +474,7 @@ namespace nvrhi::vulkan
             if (m_EnableAutomaticBarriers)
             {
                 requireBufferState(buffer, ResourceStates::CopyDest);
+                m_BindingStatesDirty = true;
             }
             commitBarriers();
 
@@ -460,7 +506,7 @@ namespace nvrhi::vulkan
 
     void CommandList::clearBufferUInt(IBuffer* b, uint32_t clearValue)
     {
-        Buffer* vkbuf = checked_cast<Buffer*>(b);
+        Buffer* buffer = checked_cast<Buffer*>(b);
 
         assert(m_CurrentCmdBuf);
 
@@ -468,16 +514,24 @@ namespace nvrhi::vulkan
 
         if (m_EnableAutomaticBarriers)
         {
-            requireBufferState(vkbuf, ResourceStates::CopyDest);
+            requireBufferState(buffer, ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
-        m_CurrentCmdBuf->cmdBuf.fillBuffer(vkbuf->buffer, 0, vkbuf->desc.byteSize, clearValue);
+        m_CurrentCmdBuf->cmdBuf.fillBuffer(buffer->buffer, 0, buffer->desc.byteSize, clearValue);
         m_CurrentCmdBuf->referencedResources.push_back(b);
     }
 
     Buffer::~Buffer()
     {
+        if (m_Context.logBufferLifetime)
+        {
+            std::stringstream ss;
+            ss << "Release buffer: " << desc.debugName << " 0x" << std::hex << getGpuVirtualAddress();
+            m_Context.info(ss.str());
+        }
+
         if (mappedMemory)
         {
             m_Context.device.unmapMemory(memory);

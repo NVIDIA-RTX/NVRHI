@@ -528,6 +528,7 @@ namespace nvrhi::d3d12
             if (m_EnableAutomaticBarriers)
             {
                 requireBufferState(buffer, ResourceStates::CopyDest);
+                m_BindingStatesDirty = true;
             }
             commitBarriers();
 
@@ -553,6 +554,7 @@ namespace nvrhi::d3d12
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(b, ResourceStates::UnorderedAccess);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -579,6 +581,7 @@ namespace nvrhi::d3d12
         {
             requireBufferState(dest, ResourceStates::CopyDest);
             requireBufferState(src, ResourceStates::CopySource);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
