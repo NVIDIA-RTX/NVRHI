@@ -588,7 +588,26 @@ namespace nvrhi::d3d12
 
         m_ActiveCommandList->commandList->ExecuteIndirect(m_Context.drawIndexedIndirectSignature, drawCount, indirectParams->resource, offsetBytes, nullptr, 0);
     }
-    
+
+    void CommandList::drawIndexedIndirectCount(uint32_t offsetBytes, uint32_t maxDrawCount)
+    {
+        Buffer* indirectParams = checked_cast<Buffer*>(m_CurrentGraphicsState.indirectParams);
+        Buffer* countBuf = checked_cast<Buffer*>(m_CurrentGraphicsState.indirectCountBuffer);
+        assert(indirectParams);
+        assert(countBuf);
+
+        updateGraphicsVolatileBuffers();
+
+        m_ActiveCommandList->commandList->ExecuteIndirect(
+            m_Context.drawIndexedIndirectSignature,
+            maxDrawCount,
+            indirectParams->resource,
+            offsetBytes,
+            countBuf->resource,
+            m_CurrentGraphicsState.indirectCountOffset
+        );
+    }
+
     DX12_ViewportState convertViewportState(const RasterState& rasterState, const FramebufferInfoEx& framebufferInfo, const ViewportState& vpState)
     {
         DX12_ViewportState ret;
