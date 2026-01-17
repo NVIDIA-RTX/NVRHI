@@ -594,6 +594,21 @@ namespace nvrhi::vulkan
                 utils::InvalidEnum();
                 break;
             }
+
+            // Update the hasUavBindings flag, it's cleaner to do it as a separate switch.
+            switch (binding.type)
+            {
+            case ResourceType::Texture_UAV:
+            case ResourceType::TypedBuffer_UAV:
+            case ResourceType::StructuredBuffer_UAV:
+            case ResourceType::RawBuffer_UAV:
+            case ResourceType::SamplerFeedbackTexture_UAV:
+                ret->hasUavBindings = true;
+                break;
+            default:
+                break;
+            }
+
         }
 
         m_Context.device.updateDescriptorSets(uint32_t(descriptorWriteInfo.size()), descriptorWriteInfo.data(), 0, nullptr);

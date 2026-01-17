@@ -137,6 +137,7 @@ namespace nvrhi::d3d12
         m_CurrentMeshletStateValid = false;
         m_CurrentRayTracingStateValid = false;
         m_CurrentComputeState = state;
+        m_BindingStatesDirty = false;
         
         commitBarriers();
     }

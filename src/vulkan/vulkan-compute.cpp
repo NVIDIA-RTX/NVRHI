@@ -117,20 +117,9 @@ namespace nvrhi::vulkan
 
         ComputePipeline* pso = checked_cast<ComputePipeline*>(state.pipeline);
 
-        if (m_EnableAutomaticBarriers && arraysAreDifferent(state.bindings, m_CurrentComputeState.bindings))
+        if (m_EnableAutomaticBarriers)
         {
-            for (size_t i = 0; i < state.bindings.size() && i < pso->desc.bindingLayouts.size(); i++)
-            {
-                BindingLayout* layout = checked_cast<BindingLayout*>(pso->desc.bindingLayouts[i].Get());
-
-                if ((layout->desc.visibility & ShaderType::Compute) == 0)
-                    continue;
-
-                if (m_EnableAutomaticBarriers)
-                {
-                    setResourceStatesForBindingSet(state.bindings[i]);
-                }
-            }
+            insertComputeResourceBarriers(state);
         }
 
         if (m_CurrentComputeState.pipeline != state.pipeline)
@@ -140,6 +129,11 @@ namespace nvrhi::vulkan
             m_CurrentCmdBuf->referencedResources.push_back(state.pipeline);
         }
 
+        if (state.indirectParams && state.indirectParams != m_CurrentComputeState.indirectParams)
+        {
+            m_CurrentCmdBuf->referencedResources.push_back(state.indirectParams);
+        }
+
         if (arraysAreDifferent(m_CurrentComputeState.bindings, state.bindings) || m_AnyVolatileBufferWrites)
         {
             bindBindingSets(vk::PipelineBindPoint::eCompute, pso->pipelineLayout, state.bindings, pso->descriptorSetIdxToBindingIdx);
@@ -147,18 +141,6 @@ namespace nvrhi::vulkan
 
         m_CurrentPipelineLayout = pso->pipelineLayout;
         m_CurrentPushConstantsVisibility = pso->pushConstantVisibility;
-
-        if (state.indirectParams && state.indirectParams != m_CurrentComputeState.indirectParams)
-        {
-            Buffer* indirectParams = checked_cast<Buffer*>(state.indirectParams);
-
-            m_CurrentCmdBuf->referencedResources.push_back(state.indirectParams);
-
-            if (m_EnableAutomaticBarriers)
-            {
-                requireBufferState(indirectParams, ResourceStates::IndirectArgument);
-            }
-        }
 
         commitBarriers();
 

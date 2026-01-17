@@ -200,6 +200,7 @@ namespace nvrhi::vulkan
         {
             requireBufferState(dst->buffer, ResourceStates::CopyDest);
             requireTextureState(src, srcSubresource, ResourceStates::CopySource);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -254,6 +255,7 @@ namespace nvrhi::vulkan
         {
             requireBufferState(src->buffer, ResourceStates::CopySource);
             requireTextureState(dst, dstSubresource, ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 

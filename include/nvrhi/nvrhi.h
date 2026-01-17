@@ -64,7 +64,7 @@ namespace nvrhi
 {
     // Version of the public API provided by NVRHI.
     // Increment this when any changes to the API are made.
-    static constexpr uint32_t c_HeaderVersion = 21;
+    static constexpr uint32_t c_HeaderVersion = 22;
 
     // Verifies that the version of the implementation matches the version of the header.
     // Returns true if they match. Use this when initializing apps using NVRHI as a shared library.
@@ -1864,7 +1864,7 @@ namespace nvrhi
                 uint64_t inIndirectArgsOffsetInBytes = 0;               // Offset (in bytes) to where the descriptor array starts inIndirectArgsBuffer
 
                 // In/Out Resources
-                IBuffer* inOutAddressesBuffer = nullptr;                // Array of addresseses of CLAS, CLAS Templates, or BLAS
+                IBuffer* inOutAddressesBuffer = nullptr;                // Array of addresses of CLAS, CLAS Templates, or BLAS
                 uint64_t inOutAddressesOffsetInBytes = 0;               // Offset (in bytes) to where the addresses array starts in inOutAddressesBuffer
 
                 // Output Resources
@@ -2029,21 +2029,21 @@ namespace nvrhi
         // - MutableSampler will enable D3D12_ROOT_SIGNATURE_FLAG_SAMPLER_HEAP_DIRECTLY_INDEXED for the Root Signature
         // - The BindingLayout will be ignored in terms of setting a descriptor set. DescriptorIndexing should use GetDescriptorIndexInHeap()
         // For Vulkan:
-        // - The type corresponds to the SPIRV bindings which map to ResourceDescriptorHeap and SamplerDescriptorHeap
+        // - The type corresponds to the SPIR-V bindings which map to ResourceDescriptorHeap and SamplerDescriptorHeap
         // - The shader needs to be compiled with the same descriptor set index as is passed into setState
         // https://github.com/microsoft/DirectXShaderCompiler/blob/main/docs/SPIR-V.rst#resourcedescriptorheaps-samplerdescriptorheaps
         enum class LayoutType
         {
             Immutable = 0,      // Must use registerSpaces to define a fixed descriptor type
 
-            MutableSrvUavCbv,   // Corresponds to SPIRV binding -fvk-bind-resource-heap (Counter resources ResourceDescriptorHeap)
+            MutableSrvUavCbv,   // Corresponds to SPIR-V binding -fvk-bind-resource-heap (Counter resources ResourceDescriptorHeap)
                                 // Valid descriptor types: Texture_SRV, Texture_UAV, TypedBuffer_SRV, TypedBuffer_UAV,
                                 // StructuredBuffer_SRV, StructuredBuffer_UAV, RawBuffer_SRV, RawBuffer_UAV, ConstantBuffer
 
-            MutableCounters,    // Corresponds to SPIRV binding -fvk-bind-counter-heap (Counter resources accessed via ResourceDescriptorHeap)
+            MutableCounters,    // Corresponds to SPIR-V binding -fvk-bind-counter-heap (Counter resources accessed via ResourceDescriptorHeap)
                                 // Valid descriptor types: StructuredBuffer_UAV
 
-            MutableSampler,     // Corresponds to SPIRV binding -fvk-bind-sampler-heap (SamplerDescriptorHeap)
+            MutableSampler,     // Corresponds to SPIR-V binding -fvk-bind-sampler-heap (SamplerDescriptorHeap)
                                 // Valid descriptor types: Sampler
         };
 
@@ -2356,7 +2356,7 @@ namespace nvrhi
     // verify the packing of BindingSetItem for good alignment
     static_assert(sizeof(BindingSetItem) == 40, "sizeof(BindingSetItem) is supposed to be 40 bytes");
 
-    // Describes a set of bindings corresponding to one binidng layout
+    // Describes a set of bindings corresponding to one binding layout
     struct BindingSetDesc
     {
         std::vector<BindingSetItem> bindings;
@@ -2824,9 +2824,39 @@ namespace nvrhi
 
         class IPipeline;
 
+        struct ShaderTableDesc
+        {
+            // Controls the memory usage and building behavior of the shader table.
+            //
+            // - When a shader table is cached, it creates an additional buffer that holds the built shader table.
+            //   This buffer is updated in CommandList::setRayTracingState after the shader table is modified.
+            // - When a shader table is uncached, this buffer is suballocated from the upload manager when the shader
+            //   table is first used in CommandList::setRayTracingState after opening a command list, and reallocated
+            //   and rebuilt on subsequent calls to setRayTracingState if the shader table is modified.
+            //
+            // The legacy and default behavior is uncached.
+            // It is recommended to enable caching for large and infrequently updated shader tables.
+            bool isCached = false;
+
+            // Maximum number of entries in a cached shader table.
+            // Must be nonzero when isCached == true.
+            // Ignored when isCached == false.
+            uint32_t maxEntries = 0;
+
+            std::string debugName;
+
+            ShaderTableDesc& setIsCached(bool value) { isCached = value; return *this; }
+            ShaderTableDesc& setMaxEntries(uint32_t value) { maxEntries = value; return *this; }
+            ShaderTableDesc& setDebugName(const std::string& value) { debugName = value; return *this; }
+            ShaderTableDesc& enableCaching(uint32_t _maxEntries) { isCached = true; maxEntries = _maxEntries; return *this; }
+        };
+
         class IShaderTable : public IResource
         {
         public:
+            virtual ShaderTableDesc const& getDesc() const = 0;
+            virtual uint32_t getNumEntries() const = 0;
+            virtual IPipeline* getPipeline() const = 0;
             virtual void setRayGenerationShader(const char* exportName, IBindingSet* bindings = nullptr) = 0;
             virtual int addMissShader(const char* exportName, IBindingSet* bindings = nullptr) = 0;
             virtual int addHitGroup(const char* exportName, IBindingSet* bindings = nullptr) = 0;
@@ -2834,7 +2864,6 @@ namespace nvrhi
             virtual void clearMissShaders() = 0;
             virtual void clearHitShaders() = 0;
             virtual void clearCallableShaders() = 0;
-            virtual IPipeline* getPipeline() = 0;
         };
 
         typedef RefCountPtr<IShaderTable> ShaderTableHandle;
@@ -2843,7 +2872,7 @@ namespace nvrhi
         {
         public:
             [[nodiscard]] virtual const rt::PipelineDesc& getDesc() const = 0;
-            virtual ShaderTableHandle createShaderTable() = 0;
+            virtual ShaderTableHandle createShaderTable(ShaderTableDesc const& desc = ShaderTableDesc()) = 0;
         };
 
         typedef RefCountPtr<IPipeline> PipelineHandle;
@@ -2951,7 +2980,7 @@ namespace nvrhi
             // Size in bytes of the matrix.
             size_t size = 0;
 
-            // Stride in bytes between rows or coumns, depending on the layout.
+            // Stride in bytes between rows or columns, depending on the layout.
             // For RowMajor and ColumnMajor layouts, stride may be zero, in which case it is computed automatically.
             // For InferencingOptimal and TrainingOptimal layouts, stride does not matter and should be zero.
             size_t stride = 0;
@@ -3249,7 +3278,7 @@ namespace nvrhi
         // state. To avoid these issues, call clearState() when switching from direct command list access to NVRHI.
         virtual void setGraphicsState(const GraphicsState& state) = 0;
 
-        // Draws non-indexed primitivies using the current graphics state.
+        // Draws non-indexed primitives using the current graphics state.
         // setGraphicsState(...) must be called between opening the command list or using other types of pipelines
         // and calling draw(...) or any of its siblings. If the pipeline uses push constants, those must be set
         // using setPushConstants(...) between setGraphicsState(...) and draw(...). If the pipeline uses volatile
@@ -3259,7 +3288,7 @@ namespace nvrhi
         // - Vulkan: Maps to vkCmdDraw.
         virtual void draw(const DrawArguments& args) = 0;
 
-        // Draws indexed primitivies using the current graphics state.
+        // Draws indexed primitives using the current graphics state.
         // See the comment to draw(...) for state information.
         // - DX11/12: Maps to DrawIndexedInstanced.
         // - Vulkan: Maps to vkCmdDrawIndexed.
@@ -3417,7 +3446,7 @@ namespace nvrhi
         virtual void convertCoopVecMatrices(coopvec::ConvertMatrixLayoutDesc const* convertDescs, size_t numDescs) = 0;
 
         // Starts measuring GPU execution time using the provided timer query at this point in the command list.
-        // Use endTimerQuery(...) to stop measusing time, and IDevice::getTimerQueryTime(...) to get the results later.
+        // Use endTimerQuery(...) to stop measuring time, and IDevice::getTimerQueryTime(...) to get the results later.
         // The same timer query cannot be used multiple times within the same command list, or in different
         // command lists until it is resolved.
         // - DX11: Maps to Begin and End calls on two ID3D11Query objects.
@@ -3438,7 +3467,7 @@ namespace nvrhi
         // - DX11: Maps to ID3DUserDefinedAnnotation::BeginEvent.
         // - DX12: Maps to PIXBeginEvent.
         // - Vulkan: Maps to cmdBeginDebugUtilsLabelEXT or cmdDebugMarkerBeginEXT.
-        // If Nsight Aftermath integration is enabled, also calls GFSDK_Aftermath_SetEventMarker on DX11 and DX12.
+        // If NSight Aftermath integration is enabled, also calls GFSDK_Aftermath_SetEventMarker on DX11 and DX12.
         virtual void beginMarker(const char* name) = 0;
 
         // Places a debug marker denoting the end of a range of commands in the command list.
@@ -3484,33 +3513,33 @@ namespace nvrhi
         // See the comment to beginTrackingTextureState(...) for more information.
         virtual void beginTrackingBufferState(IBuffer* buffer, ResourceStates stateBits) = 0;
 
-        // Places the neccessary barriers to make sure that the texture or some of its subresources are in the given
+        // Places the necessary barriers to make sure that the texture or some of its subresources are in the given
         // state. If the texture or subresources are already in that state, no action is performed.
         // If the texture was previously transitioned to a permanent state, the new state must be compatible
         // with that permanent state, and no action is performed.
         // The barriers are not immediately submitted to the underlying graphics API, but are placed to the pending
-        // list instead. Call commitBarriers() to submit them to the grahics API explicitly or set graphics
+        // list instead. Call commitBarriers() to submit them to the graphics API explicitly or set graphics
         // or other type of state.
         // Has no effect on DX11.
         virtual void setTextureState(ITexture* texture, TextureSubresourceSet subresources,
             ResourceStates stateBits) = 0;
 
-        // Places the neccessary barriers to make sure that the buffer is in the given state.
+        // Places the necessary barriers to make sure that the buffer is in the given state.
         // See the comment to setTextureState(...) for more information.
         // Has no effect on DX11.
         virtual void setBufferState(IBuffer* buffer, ResourceStates stateBits) = 0;
 
-        // Places the neccessary barriers to make sure that the underlying buffer for the acceleration structure is
+        // Places the necessary barriers to make sure that the underlying buffer for the acceleration structure is
         // in the given state. See the comment to setTextureState(...) for more information.
         // Has no effect on DX11.
         virtual void setAccelStructState(rt::IAccelStruct* as, ResourceStates stateBits) = 0;
 
-        // Places the neccessary barriers to make sure that the entire texture is in the given state, and marks that
+        // Places the necessary barriers to make sure that the entire texture is in the given state, and marks that
         // state as the texture's permanent state. Once a texture is transitioned into a permanent state, its state
         // can not be modified. This can improve performance by excluding the texture from automatic state tracking
         // in the future.
         // The barriers are not immediately submitted to the underlying graphics API, but are placed to the pending
-        // list instead. Call commitBarriers() to submit them to the grahics API explicitly or set graphics
+        // list instead. Call commitBarriers() to submit them to the graphics API explicitly or set graphics
         // or other type of state.
         // Note that the permanent state transitions affect all command lists, and are only applied when the command
         // list that sets them is executed. If the command list is closed but not executed, the permanent states
@@ -3518,7 +3547,7 @@ namespace nvrhi
         // Has no effect on DX11.
         virtual void setPermanentTextureState(ITexture* texture, ResourceStates stateBits) = 0;
 
-        // Places the neccessary barriers to make sure that the buffer is in the given state, and marks that state
+        // Places the necessary barriers to make sure that the buffer is in the given state, and marks that state
         // as the buffer's permanent state. See the comment to setPermanentTextureState(...) for more information.
         // Has no effect on DX11.
         virtual void setPermanentBufferState(IBuffer* buffer, ResourceStates stateBits) = 0;

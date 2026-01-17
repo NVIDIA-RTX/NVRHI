@@ -278,12 +278,7 @@ namespace nvrhi::d3d12
     }
     
     void CommandList::bindFramebuffer(Framebuffer *fb)
-    {
-        if (m_EnableAutomaticBarriers)
-        {
-            setResourceStatesForFramebuffer(fb);
-        }
-        
+    {   
         static_vector<D3D12_CPU_DESCRIPTOR_HANDLE, 16> RTVs;
         for (uint32_t rtIndex = 0; rtIndex < fb->RTVs.size(); rtIndex++)
         {
@@ -356,6 +351,11 @@ namespace nvrhi::d3d12
             bindFramebuffer(framebuffer);
             m_Instance->referencedResources.push_back(framebuffer);
         }
+        
+        if (m_EnableAutomaticBarriers && framebuffer && (m_BindingStatesDirty || updateFramebuffer))
+        {
+            setResourceStatesForFramebuffer(framebuffer);
+        }
 
         setGraphicsBindings(state.bindings, bindingUpdateMask, state.indirectParams, updateIndirectParams, pso->rootSignature);
 
@@ -367,11 +367,6 @@ namespace nvrhi::d3d12
             {
                 Buffer* buffer = checked_cast<Buffer*>(state.indexBuffer.buffer);
 
-                if (m_EnableAutomaticBarriers)
-                {
-                    requireBufferState(buffer, ResourceStates::IndexBuffer);
-                }
-
                 IBV.Format = getDxgiFormatMapping(state.indexBuffer.format).srvFormat;
                 IBV.SizeInBytes = (UINT)(buffer->desc.byteSize - state.indexBuffer.offset);
                 IBV.BufferLocation = buffer->gpuVA + state.indexBuffer.offset;
@@ -380,6 +375,13 @@ namespace nvrhi::d3d12
             }
 
             m_ActiveCommandList->commandList->IASetIndexBuffer(&IBV);
+        }
+
+        if (m_EnableAutomaticBarriers && state.indexBuffer.buffer && (m_BindingStatesDirty || updateIndexBuffer))
+        {
+            Buffer* buffer = checked_cast<Buffer*>(state.indexBuffer.buffer);
+
+            requireBufferState(buffer, ResourceStates::IndexBuffer);
         }
 
         if (updateVertexBuffers)
@@ -391,11 +393,6 @@ namespace nvrhi::d3d12
             for (const VertexBufferBinding& binding : state.vertexBuffers)
             {
                 Buffer* buffer = checked_cast<Buffer*>(binding.buffer);
-
-                if (m_EnableAutomaticBarriers)
-                {
-                    requireBufferState(buffer, ResourceStates::VertexBuffer);
-                }
 
                 // This is tested by the validation layer, skip invalid slots here if VL is not used.
                 if (binding.slot >= c_MaxVertexAttributes)
@@ -419,6 +416,16 @@ namespace nvrhi::d3d12
             }
 
             m_ActiveCommandList->commandList->IASetVertexBuffers(0, maxVbIndex + 1, VBVs);
+        }
+
+        if (m_EnableAutomaticBarriers && state.indexBuffer.buffer && (m_BindingStatesDirty || updateVertexBuffers))
+        {
+            for (const VertexBufferBinding& binding : state.vertexBuffers)
+            {
+                Buffer* buffer = checked_cast<Buffer*>(binding.buffer);
+
+                requireBufferState(buffer, ResourceStates::VertexBuffer);
+            }
         }
 
         if (updateShadingRate || updateFramebuffer)
@@ -498,6 +505,7 @@ namespace nvrhi::d3d12
         m_CurrentRayTracingStateValid = false;
         m_CurrentGraphicsState = state;
         m_CurrentGraphicsState.dynamicStencilRefValue = effectiveStencilRefValue;
+        m_BindingStatesDirty = false;
     }
 
     void CommandList::unbindShadingRateState()

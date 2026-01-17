@@ -100,6 +100,7 @@ namespace nvrhi::d3d12
     class RootSignature;
     class Buffer;
     class CommandList;
+    class Device;
     struct Context;
 
     typedef uint32_t RootParameterIndex;
@@ -815,18 +816,31 @@ namespace nvrhi::d3d12
         std::unordered_map<std::string, ExportTableEntry> exports;
         uint32_t maxLocalRootParameters = 0;
 
-        RayTracingPipeline(const Context& context)
+        RayTracingPipeline(const Context& context, Device* device)
             : m_Context(context)
+            , m_Device(device)
         { }
 
         const ExportTableEntry* getExport(const char* name);
         uint32_t getShaderTableEntrySize() const;
+        bool hasLocalResources() const { return maxLocalRootParameters != 0; }
 
         const rt::PipelineDesc& getDesc() const override { return desc; }
-        rt::ShaderTableHandle createShaderTable() override;
+        rt::ShaderTableHandle createShaderTable(rt::ShaderTableDesc const& stDesc) override;
 
     private:
         const Context& m_Context;
+        Device* m_Device;
+    };
+
+
+    class ShaderTableState
+    {
+    public:
+        uint32_t committedVersion = 0;
+        ID3D12DescriptorHeap* descriptorHeapSRV = nullptr;
+        ID3D12DescriptorHeap* descriptorHeapSamplers = nullptr;
+        D3D12_DISPATCH_RAYS_DESC dispatchRaysTemplate = {};
     };
 
     class ShaderTable : public RefCounter<rt::IShaderTable>
@@ -847,13 +861,23 @@ namespace nvrhi::d3d12
 
         uint32_t version = 0;
 
-        ShaderTable(const Context& context, RayTracingPipeline* _pipeline)
+        BufferHandle cache;
+        ShaderTableState cacheState;
+        
+        ShaderTable(const Context& context, RayTracingPipeline* _pipeline, rt::ShaderTableDesc const& desc)
             : pipeline(_pipeline)
             , m_Context(context)
+            , m_Desc(desc)
         { }
 
-        uint32_t getNumEntries() const;
-
+        size_t getUploadSize() const { return pipeline->getShaderTableEntrySize() * size_t(getNumEntries()); }
+        bool isStateValid(ShaderTableState const& state, DeviceResources const& resources) const;
+        void bake(uint8_t* cpuVA, D3D12_GPU_VIRTUAL_ADDRESS gpuVA, DeviceResources& resources,
+            ShaderTableState& state);
+        
+        rt::ShaderTableDesc const& getDesc() const override { return m_Desc; }
+        uint32_t getNumEntries() const override;
+        rt::IPipeline* getPipeline() const override { return pipeline; }
         void setRayGenerationShader(const char* exportName, IBindingSet* bindings = nullptr) override;
         int addMissShader(const char* exportName, IBindingSet* bindings = nullptr) override;
         int addHitGroup(const char* exportName, IBindingSet* bindings = nullptr) override;
@@ -861,23 +885,14 @@ namespace nvrhi::d3d12
         void clearMissShaders() override;
         void clearHitShaders() override;
         void clearCallableShaders() override;
-        rt::IPipeline* getPipeline() override;
 
     private:
         const Context& m_Context;
+        rt::ShaderTableDesc const m_Desc;
 
         bool verifyExport(const RayTracingPipeline::ExportTableEntry* pExport, IBindingSet* bindings) const;
     };
 
-
-    class ShaderTableState
-    {
-    public:
-        uint32_t committedVersion = 0;
-        ID3D12DescriptorHeap* descriptorHeapSRV = nullptr;
-        ID3D12DescriptorHeap* descriptorHeapSamplers = nullptr;
-        D3D12_DISPATCH_RAYS_DESC dispatchRaysTemplate = {};
-    };
 
     class Queue
     {
@@ -1080,6 +1095,7 @@ namespace nvrhi::d3d12
         bool m_CurrentComputeStateValid = false;
         bool m_CurrentMeshletStateValid = false;
         bool m_CurrentRayTracingStateValid = false;
+        bool m_BindingStatesDirty = false;
 
         // Cache for internal state
 
@@ -1099,8 +1115,8 @@ namespace nvrhi::d3d12
         static_vector<VolatileConstantBufferBinding, c_MaxVolatileConstantBuffers> m_CurrentGraphicsVolatileCBs;
         static_vector<VolatileConstantBufferBinding, c_MaxVolatileConstantBuffers> m_CurrentComputeVolatileCBs;
 
-        std::unordered_map<rt::IShaderTable*, std::unique_ptr<ShaderTableState>> m_ShaderTableStates;
-        ShaderTableState* getShaderTableStateTracking(rt::IShaderTable* shaderTable);
+        std::unordered_map<rt::IShaderTable*, std::unique_ptr<ShaderTableState>> m_UncachedShaderTableStates;
+        ShaderTableState& getShaderTableState(rt::IShaderTable* shaderTable);
         
         void clearStateCache();
 

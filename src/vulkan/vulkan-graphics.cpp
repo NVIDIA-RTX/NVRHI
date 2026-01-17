@@ -521,7 +521,6 @@ namespace nvrhi::vulkan
 
     static vk::Viewport VKViewportWithDXCoords(const Viewport& v)
     {
-        // requires VK_KHR_maintenance1 which allows negative-height to indicate an inverted coord space to match DX
         return vk::Viewport(v.minX, v.maxY, v.maxX - v.minX, -(v.maxY - v.minY), v.minZ, v.maxZ);
     }
 
@@ -534,7 +533,7 @@ namespace nvrhi::vulkan
 
         if (m_EnableAutomaticBarriers)
         {
-            trackResourcesAndBarriers(state);
+            insertGraphicsResourceBarriers(state);
         }
 
         bool anyBarriers = this->anyBarriers();

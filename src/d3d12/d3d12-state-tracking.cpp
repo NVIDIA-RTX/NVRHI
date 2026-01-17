@@ -212,23 +212,6 @@ namespace nvrhi::d3d12
         m_StateTracker.setEnableUavBarriersForBuffer(buffer, enableBarriers);
     }
     
-    ShaderTableState* CommandList::getShaderTableStateTracking(rt::IShaderTable* shaderTable)
-    {
-        auto it = m_ShaderTableStates.find(shaderTable);
-
-        if (it != m_ShaderTableStates.end())
-        {
-            return it->second.get();
-        }
-
-        std::unique_ptr<ShaderTableState> trackingRef = std::make_unique<ShaderTableState>();
-
-        ShaderTableState* tracking = trackingRef.get();
-        m_ShaderTableStates.insert(std::make_pair(shaderTable, std::move(trackingRef)));
-
-        return tracking;
-    }
-
     void CommandList::beginTrackingTextureState(ITexture* _texture, TextureSubresourceSet subresources, ResourceStates stateBits)
     {
         Texture* texture = checked_cast<Texture*>(_texture);

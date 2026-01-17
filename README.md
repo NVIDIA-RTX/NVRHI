@@ -4,7 +4,7 @@
 
 ## Introduction
 
-NVRHI (**NV**IDIA **R**endering **H**ardware **I**nterface) is a library that implements a common abstraction layer over multiple graphics APIs (GAPIs): Direct3D 11, Direct3D 12, and Vulkan 1.2. It works on Windows (x64 only) and Linux (x64 and ARM64).
+NVRHI (**NV**IDIA **R**endering **H**ardware **I**nterface) is a library that implements a common abstraction layer over multiple graphics APIs (GAPIs): Direct3D 11, Direct3D 12, and Vulkan 1.3. It works on Windows (x64 only) and Linux (x64 and ARM64).
 
 Key features:
 

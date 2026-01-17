@@ -394,12 +394,6 @@ namespace nvrhi::d3d12
         ++version;
     }
 
-    rt::IPipeline* ShaderTable::getPipeline()
-    {
-        return pipeline;
-    }
-
-
     const RayTracingPipeline::ExportTableEntry* RayTracingPipeline::getExport(const char* name)
     {
         const auto exportEntryIt = exports.find(name);
@@ -411,9 +405,32 @@ namespace nvrhi::d3d12
         return &exportEntryIt->second;
     }
 
-    rt::ShaderTableHandle RayTracingPipeline::createShaderTable()
+    rt::ShaderTableHandle RayTracingPipeline::createShaderTable(rt::ShaderTableDesc const& stDesc)
     { 
-        return rt::ShaderTableHandle::Create(new ShaderTable(m_Context, this));
+        BufferHandle cache;
+        if (stDesc.isCached)
+        {
+            if (stDesc.maxEntries == 0)
+            {
+                m_Context.error("maxEntries must be nonzero for a cached ShaderTable");
+                return nullptr;
+            }
+            
+            BufferDesc bufferDesc = BufferDesc()
+                .setDebugName(stDesc.debugName)
+                .setByteSize(getShaderTableEntrySize() * stDesc.maxEntries)
+                .setIsShaderBindingTable(true)
+                .enableAutomaticStateTracking(ResourceStates::ShaderResource);
+
+            cache = m_Device->createBuffer(bufferDesc);
+            if (!cache)
+                return nullptr;
+        }
+
+        ShaderTable* shaderTable = new ShaderTable(m_Context, this, stDesc);
+        shaderTable->cache = cache;
+
+        return rt::ShaderTableHandle::Create(shaderTable);
     }
 
     uint32_t RayTracingPipeline::getShaderTableEntrySize() const
@@ -1166,7 +1183,7 @@ namespace nvrhi::d3d12
     
     rt::PipelineHandle Device::createRayTracingPipeline(const rt::PipelineDesc& desc)
     {
-        RayTracingPipeline* pso = new RayTracingPipeline(m_Context);
+        RayTracingPipeline* pso = new RayTracingPipeline(m_Context, this);
         pso->desc = desc;
         pso->maxLocalRootParameters = 0;
 
@@ -1523,108 +1540,197 @@ namespace nvrhi::d3d12
         return rt::PipelineHandle::Create(pso);
     }
 
+    void ShaderTable::bake(uint8_t* cpuVA, D3D12_GPU_VIRTUAL_ADDRESS gpuVA, DeviceResources& resources, ShaderTableState& state)
+    {
+        uint32_t const entrySize = pipeline->getShaderTableEntrySize();
+
+        auto writeEntry = [this, &resources, entrySize, &cpuVA, &gpuVA](const ShaderTable::Entry& entry) 
+        {
+            memcpy(cpuVA, entry.pShaderIdentifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+            if (entry.localBindings)
+            {
+                d3d12::BindingSet* bindingSet = checked_cast<d3d12::BindingSet*>(entry.localBindings.Get());
+                d3d12::BindingLayout* layout = bindingSet->layout;
+
+                if (layout->descriptorTableSizeSamplers > 0)
+                {
+                    auto pTable = reinterpret_cast<D3D12_GPU_DESCRIPTOR_HANDLE*>(cpuVA
+                        + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES + layout->rootParameterSamplers * sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
+                    *pTable = resources.samplerHeap.getGpuHandle(bindingSet->descriptorTableSamplers);
+                }
+
+                if (layout->descriptorTableSizeSRVetc > 0)
+                {
+                    auto pTable = reinterpret_cast<D3D12_GPU_DESCRIPTOR_HANDLE*>(cpuVA
+                        + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES + layout->rootParameterSRVetc * sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
+                    *pTable = resources.shaderResourceViewHeap.getGpuHandle(bindingSet->descriptorTableSRVetc);
+                }
+
+                if (!layout->rootParametersVolatileCB.empty())
+                {
+                    m_Context.error("Cannot use Volatile CBs in a shader binding table");
+                    return;
+                }
+            }
+
+            cpuVA += entrySize;
+            gpuVA += entrySize;
+        };
+
+        D3D12_DISPATCH_RAYS_DESC& drd = state.dispatchRaysTemplate;
+        memset(&drd, 0, sizeof(D3D12_DISPATCH_RAYS_DESC));
+
+        drd.RayGenerationShaderRecord.StartAddress = gpuVA;
+        drd.RayGenerationShaderRecord.SizeInBytes = entrySize;
+        writeEntry(rayGenerationShader);
+        
+        if (!missShaders.empty())
+        {
+            drd.MissShaderTable.StartAddress = gpuVA;
+            drd.MissShaderTable.StrideInBytes = (missShaders.size() == 1) ? 0 : entrySize;
+            drd.MissShaderTable.SizeInBytes = uint32_t(missShaders.size()) * entrySize;
+
+            for (auto& entry : missShaders)
+                writeEntry(entry);
+        }
+
+        if (!hitGroups.empty())
+        {
+            drd.HitGroupTable.StartAddress = gpuVA;
+            drd.HitGroupTable.StrideInBytes = (hitGroups.size() == 1) ? 0 : entrySize;
+            drd.HitGroupTable.SizeInBytes = uint32_t(hitGroups.size()) * entrySize;
+
+            for (auto& entry : hitGroups)
+                writeEntry(entry);
+        }
+
+        if (!callableShaders.empty())
+        {
+            drd.CallableShaderTable.StartAddress = gpuVA;
+            drd.CallableShaderTable.StrideInBytes = (callableShaders.size() == 1) ? 0 : entrySize;
+            drd.CallableShaderTable.SizeInBytes = uint32_t(callableShaders.size()) * entrySize;
+
+            for (auto& entry : callableShaders)
+                writeEntry(entry);
+        }
+
+        state.committedVersion = version;
+        if (pipeline->hasLocalResources())
+        {
+            state.descriptorHeapSRV =  resources.shaderResourceViewHeap.getShaderVisibleHeap();
+            state.descriptorHeapSamplers = resources.samplerHeap.getShaderVisibleHeap();
+        }
+        else
+        {
+            state.descriptorHeapSRV = nullptr;
+            state.descriptorHeapSamplers = nullptr;
+        }
+    }
+
+    bool ShaderTable::isStateValid(ShaderTableState const& state, DeviceResources const& resources) const
+    {
+        if (pipeline->hasLocalResources())
+        {
+            return state.committedVersion == version &&
+                state.descriptorHeapSRV == resources.shaderResourceViewHeap.getShaderVisibleHeap() &&
+                state.descriptorHeapSamplers == resources.samplerHeap.getShaderVisibleHeap();
+        }
+        else
+        {
+            return state.committedVersion == version;
+        }
+    }
+    
+    ShaderTableState& CommandList::getShaderTableState(rt::IShaderTable* _shaderTable)
+    {
+        ShaderTable* shaderTable = checked_cast<ShaderTable*>(_shaderTable);
+        if (shaderTable->getDesc().isCached)
+            return shaderTable->cacheState;
+
+        auto it = m_UncachedShaderTableStates.find(shaderTable);
+
+        if (it != m_UncachedShaderTableStates.end())
+        {
+            return *it->second;
+        }
+
+        std::unique_ptr<ShaderTableState> statePtr = std::make_unique<ShaderTableState>();
+
+        ShaderTableState& state = *statePtr;
+        m_UncachedShaderTableStates.insert(std::make_pair(shaderTable, std::move(statePtr)));
+
+        return state;
+    }
+
     void CommandList::setRayTracingState(const rt::State& state)
     {
         ShaderTable* shaderTable = checked_cast<ShaderTable*>(state.shaderTable);
         RayTracingPipeline* pso = shaderTable->pipeline;
 
-        ShaderTableState* shaderTableState = getShaderTableStateTracking(shaderTable);
+        // Rebuild the SBT if it's uncached and we're using it for the first time in this command list,
+        // or if it's been changed since the previous build, or if the resource or sampler heaps have changed.
 
-        bool rebuildShaderTable = shaderTableState->committedVersion != shaderTable->version ||
-            shaderTableState->descriptorHeapSRV != m_Resources.shaderResourceViewHeap.getShaderVisibleHeap() ||
-            shaderTableState->descriptorHeapSamplers != m_Resources.samplerHeap.getShaderVisibleHeap();
+        bool const shaderTableCached = shaderTable->getDesc().isCached;
+        ShaderTableState& shaderTableState = getShaderTableState(shaderTable);
+        bool const rebuildShaderTable = !shaderTable->isStateValid(shaderTableState, m_Resources);
 
         if (rebuildShaderTable)
         {
-            uint32_t entrySize = pso->getShaderTableEntrySize();
-            uint32_t sbtSize = shaderTable->getNumEntries() * entrySize;
+            size_t shaderTableSize = shaderTable->getUploadSize();
 
-            unsigned char* cpuVA;
-            D3D12_GPU_VIRTUAL_ADDRESS gpuVA;
-            if (!m_UploadManager.suballocateBuffer(sbtSize, nullptr, nullptr, nullptr, 
-                (void**)&cpuVA, &gpuVA, m_RecordingVersion, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT))
+            if (shaderTableCached && (!shaderTable->cache || shaderTableSize > shaderTable->cache->getDesc().byteSize))
+            {
+                m_Context.error("Required shader table size is larger than the allocated cache. Increase ShaderTableDesc::maxEntries.");
+                return;
+            }
+
+            // Allocate a piece of the upload buffer. That will be our SBT on the device.
+
+            ID3D12Resource* uploadBuffer = nullptr;
+            uint64_t uploadOffset = 0;
+            uint8_t* uploadCpuVA = nullptr;
+            D3D12_GPU_VIRTUAL_ADDRESS uploadGpuVA;
+            bool allocated = m_UploadManager.suballocateBuffer(shaderTableSize, nullptr, &uploadBuffer, &uploadOffset, 
+                (void**)&uploadCpuVA, &uploadGpuVA, m_RecordingVersion, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
+            
+            if (!allocated)
             {
                 m_Context.error("Couldn't suballocate an upload buffer");
                 return;
             }
 
-            uint32_t entryIndex = 0;
+            D3D12_GPU_VIRTUAL_ADDRESS const effectiveGpuVA = shaderTableCached
+                ? shaderTable->cache->getGpuVirtualAddress()
+                : uploadGpuVA;
 
-            auto writeEntry = [this, entrySize, &cpuVA, &gpuVA, &entryIndex](const ShaderTable::Entry& entry) 
+            // Build the SBT in the upload buffer.
+
+            shaderTable->bake(uploadCpuVA, effectiveGpuVA, m_Resources, shaderTableState);
+
+            // Copy the built SBT into the cache buffer, if it exists.
+
+            if (shaderTableCached)
             {
-                memcpy(cpuVA, entry.pShaderIdentifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-
-                if (entry.localBindings)
-                {
-                    d3d12::BindingSet* bindingSet = checked_cast<d3d12::BindingSet*>(entry.localBindings.Get());
-                    d3d12::BindingLayout* layout = bindingSet->layout;
-
-                    if (layout->descriptorTableSizeSamplers > 0)
-                    {
-                        auto pTable = reinterpret_cast<D3D12_GPU_DESCRIPTOR_HANDLE*>(cpuVA + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES + layout->rootParameterSamplers * sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-                        *pTable = m_Resources.samplerHeap.getGpuHandle(bindingSet->descriptorTableSamplers);
-                    }
-
-                    if (layout->descriptorTableSizeSRVetc > 0)
-                    {
-                        auto pTable = reinterpret_cast<D3D12_GPU_DESCRIPTOR_HANDLE*>(cpuVA + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES + layout->rootParameterSRVetc * sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-                        *pTable = m_Resources.shaderResourceViewHeap.getGpuHandle(bindingSet->descriptorTableSRVetc);
-                    }
-
-                    if (!layout->rootParametersVolatileCB.empty())
-                    {
-                        m_Context.error("Cannot use Volatile CBs in a shader binding table");
-                        return;
-                    }
-                }
-
-                cpuVA += entrySize;
-                gpuVA += entrySize;
-                entryIndex += 1;
-            };
-
-            D3D12_DISPATCH_RAYS_DESC& drd = shaderTableState->dispatchRaysTemplate;
-            memset(&drd, 0, sizeof(D3D12_DISPATCH_RAYS_DESC));
-
-            drd.RayGenerationShaderRecord.StartAddress = gpuVA;
-            drd.RayGenerationShaderRecord.SizeInBytes = entrySize;
-            writeEntry(shaderTable->rayGenerationShader);
-            
-            if (!shaderTable->missShaders.empty())
-            {
-                drd.MissShaderTable.StartAddress = gpuVA;
-                drd.MissShaderTable.StrideInBytes = (shaderTable->missShaders.size() == 1) ? 0 : entrySize;
-                drd.MissShaderTable.SizeInBytes = uint32_t(shaderTable->missShaders.size()) * entrySize;
-
-                for (auto& entry : shaderTable->missShaders)
-                    writeEntry(entry);
+                setBufferState(shaderTable->cache, nvrhi::ResourceStates::CopyDest);
+                commitBarriers();
+                
+                ID3D12Resource* cacheBuffer = shaderTable->cache->getNativeObject(nvrhi::ObjectTypes::D3D12_Resource);
+                m_ActiveCommandList->commandList->CopyBufferRegion(cacheBuffer, 0, uploadBuffer, uploadOffset, shaderTableSize);
             }
+        }
+        
+        if (shaderTableCached)
+        {
+            // Ensure that the cache buffer is in the right state.
+            // It's not conditional on m_EnableAutomaticBarriers because the cache is an internal object,
+            // completely invisible to the application, and so its state must be handled by NVRHI.
+            setBufferState(shaderTable->cache, nvrhi::ResourceStates::ShaderResource);
+        }
 
-            if (!shaderTable->hitGroups.empty())
-            {
-                drd.HitGroupTable.StartAddress = gpuVA;
-                drd.HitGroupTable.StrideInBytes = (shaderTable->hitGroups.size() == 1) ? 0 : entrySize;
-                drd.HitGroupTable.SizeInBytes = uint32_t(shaderTable->hitGroups.size()) * entrySize;
-
-                for (auto& entry : shaderTable->hitGroups)
-                    writeEntry(entry);
-            }
-
-            if (!shaderTable->callableShaders.empty())
-            {
-                drd.CallableShaderTable.StartAddress = gpuVA;
-                drd.CallableShaderTable.StrideInBytes = (shaderTable->callableShaders.size() == 1) ? 0 : entrySize;
-                drd.CallableShaderTable.SizeInBytes = uint32_t(shaderTable->callableShaders.size()) * entrySize;
-
-                for (auto& entry : shaderTable->callableShaders)
-                    writeEntry(entry);
-            }
-
-            shaderTableState->committedVersion = shaderTable->version;
-            shaderTableState->descriptorHeapSRV = m_Resources.shaderResourceViewHeap.getShaderVisibleHeap();
-            shaderTableState->descriptorHeapSamplers = m_Resources.samplerHeap.getShaderVisibleHeap();
-
-            // AddRef the shaderTable only on the first use / build because build happens at least once per CL anyway
+        if (shaderTableCached || rebuildShaderTable)
+        {
+            // If the shader table is not cached, then it's rebuilt at least once per CL, and we can AddRef it once then
             m_Instance->referencedResources.push_back(shaderTable);
         }
 
@@ -1663,6 +1769,7 @@ namespace nvrhi::d3d12
         m_CurrentGraphicsStateValid = false;
         m_CurrentRayTracingStateValid = true;
         m_CurrentRayTracingState = state;
+        m_BindingStatesDirty = false;
 
         commitBarriers();
     }
@@ -1677,9 +1784,9 @@ namespace nvrhi::d3d12
             return;
         }
 
-        ShaderTableState* shaderTableState = getShaderTableStateTracking(m_CurrentRayTracingState.shaderTable);
+        ShaderTableState& shaderTableState = getShaderTableState(m_CurrentRayTracingState.shaderTable);
 
-        D3D12_DISPATCH_RAYS_DESC desc = shaderTableState->dispatchRaysTemplate;
+        D3D12_DISPATCH_RAYS_DESC desc = shaderTableState.dispatchRaysTemplate;
         desc.Width = args.width;
         desc.Height = args.height;
         desc.Depth = args.depth;
@@ -1698,6 +1805,7 @@ namespace nvrhi::d3d12
             requireBufferState(desc.perOmmDescs, ResourceStates::OpacityMicromapBuildInput);
 
             requireBufferState(omm->dataBuffer, nvrhi::ResourceStates::OpacityMicromapWrite);
+            m_BindingStatesDirty = true;
         }
 
         if (desc.trackLiveness)
@@ -1874,6 +1982,10 @@ namespace nvrhi::d3d12
 #endif
         }
 
+        if (m_EnableAutomaticBarriers)
+        {
+            m_BindingStatesDirty = true;
+        }
         commitBarriers();
 
         D3D12BuildRaytracingAccelerationStructureInputs inputs;
@@ -1988,6 +2100,7 @@ namespace nvrhi::d3d12
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -2169,6 +2282,7 @@ namespace nvrhi::d3d12
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -2189,6 +2303,7 @@ namespace nvrhi::d3d12
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
             requireBufferState(instanceBuffer, nvrhi::ResourceStates::AccelStructBuildInput);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -2265,6 +2380,7 @@ namespace nvrhi::d3d12
                 requireBufferState(outAccelerationStructuresBuffer, ResourceStates::AccelStructWrite);
             if (outSizesBuffer)
                 requireBufferState(outSizesBuffer, ResourceStates::UnorderedAccess);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 

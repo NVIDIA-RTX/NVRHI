@@ -163,10 +163,10 @@ namespace nvrhi::vulkan
             .setCommandBufferCount(uint32_t(numCmd))
             .setPCommandBuffers(commandBuffers.data())
             .setWaitSemaphoreCount(uint32_t(m_WaitSemaphores.size()))
-            .setPWaitSemaphores(m_WaitSemaphores.data())
+            .setPWaitSemaphores(m_WaitSemaphores.empty() ? nullptr : m_WaitSemaphores.data())
             .setPWaitDstStageMask(waitStageArray.data())
             .setSignalSemaphoreCount(uint32_t(m_SignalSemaphores.size()))
-            .setPSignalSemaphores(m_SignalSemaphores.data());
+            .setPSignalSemaphores(m_SignalSemaphores.empty() ? nullptr : m_SignalSemaphores.data());
 
         try {
             m_Queue.submit(submitInfo);

@@ -615,6 +615,7 @@ namespace nvrhi::vulkan
             requireBufferState(desc.perOmmDescs, ResourceStates::OpacityMicromapBuildInput);
 
             requireBufferState(omm->dataBuffer, nvrhi::ResourceStates::OpacityMicromapWrite);
+            m_BindingStatesDirty = true;
         }
 
         if (desc.trackLiveness)
@@ -736,6 +737,8 @@ namespace nvrhi::vulkan
             }
             }
         }
+
+        m_BindingStatesDirty = true;
 
         auto buildInfo = vk::AccelerationStructureBuildGeometryInfoKHR()
             .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
@@ -1002,6 +1005,7 @@ namespace nvrhi::vulkan
         if (m_EnableAutomaticBarriers)
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -1022,6 +1026,7 @@ namespace nvrhi::vulkan
         {
             requireBufferState(as->dataBuffer, nvrhi::ResourceStates::AccelStructWrite);
             requireBufferState(instanceBuffer, nvrhi::ResourceStates::AccelStructBuildInput);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -1064,6 +1069,7 @@ namespace nvrhi::vulkan
                 requireBufferState(outSizesBuffer, ResourceStates::UnorderedAccess);
             if (outAccelerationStructuresBuffer)
                 requireBufferState(outAccelerationStructuresBuffer, ResourceStates::AccelStructWrite);
+            m_BindingStatesDirty = true;
         }
 
         // Track resources for liveness
@@ -1212,6 +1218,108 @@ namespace nvrhi::vulkan
         return getBufferAddress(dataBuffer, 0).deviceAddress;
     }
 
+    void ShaderTable::bake(uint8_t* uploadCpuVA, vk::DeviceAddress uploadGpuVA, ShaderTableState& state)
+    {
+        const uint32_t shaderGroupHandleSize = m_Context.rayTracingPipelineProperties.shaderGroupHandleSize;
+        const uint32_t shaderGroupBaseAlignment = m_Context.rayTracingPipelineProperties.shaderGroupBaseAlignment;
+
+        // Copy the shader and group handles into the device SBT, record the pointers and the version.
+
+        state.version = version;
+
+        // ... RayGen
+
+        uint32_t sbtIndex = 0;
+        memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
+            pipeline->shaderGroupHandles.data() + shaderGroupHandleSize * rayGenerationShader,
+            shaderGroupHandleSize);
+        state.rayGen.setDeviceAddress(uploadGpuVA + sbtIndex * shaderGroupBaseAlignment);
+        state.rayGen.setSize(shaderGroupBaseAlignment);
+        state.rayGen.setStride(shaderGroupBaseAlignment);
+        sbtIndex++;
+
+        // ... Miss
+
+        if (!missShaders.empty())
+        {
+            state.miss.setDeviceAddress(uploadGpuVA + sbtIndex * shaderGroupBaseAlignment);
+            for (uint32_t shaderGroupIndex : missShaders)
+            {
+                memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
+                    pipeline->shaderGroupHandles.data() + shaderGroupHandleSize * shaderGroupIndex,
+                    shaderGroupHandleSize);
+                sbtIndex++;
+            }
+            state.miss.setSize(shaderGroupBaseAlignment * uint32_t(missShaders.size()));
+            state.miss.setStride(shaderGroupBaseAlignment);
+        }
+        else
+        {
+            state.miss = vk::StridedDeviceAddressRegionKHR();
+        }
+
+        // ... Hit Groups
+
+        if (!hitGroups.empty())
+        {
+            state.hitGroups.setDeviceAddress(uploadGpuVA + sbtIndex * shaderGroupBaseAlignment);
+            for (uint32_t shaderGroupIndex : hitGroups)
+            {
+                memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
+                    pipeline->shaderGroupHandles.data() + shaderGroupHandleSize * shaderGroupIndex,
+                    shaderGroupHandleSize);
+                sbtIndex++;
+            }
+            state.hitGroups.setSize(shaderGroupBaseAlignment * uint32_t(hitGroups.size()));
+            state.hitGroups.setStride(shaderGroupBaseAlignment);
+        }
+        else
+        {
+            state.hitGroups = vk::StridedDeviceAddressRegionKHR();
+        }
+
+        // ... Callable
+
+        if (!callableShaders.empty())
+        {
+            state.callable.setDeviceAddress(uploadGpuVA + sbtIndex * shaderGroupBaseAlignment);
+            for (uint32_t shaderGroupIndex : callableShaders)
+            {
+                memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
+                    pipeline->shaderGroupHandles.data() + shaderGroupHandleSize * shaderGroupIndex,
+                    shaderGroupHandleSize);
+                sbtIndex++;
+            }
+            state.callable.setSize(shaderGroupBaseAlignment * uint32_t(callableShaders.size()));
+            state.callable.setStride(shaderGroupBaseAlignment);
+        }
+        else
+        {
+            state.callable = vk::StridedDeviceAddressRegionKHR();
+        }
+    }
+
+    ShaderTableState& CommandList::getShaderTableState(rt::IShaderTable* _shaderTable)
+    {
+        ShaderTable* shaderTable = checked_cast<ShaderTable*>(_shaderTable);
+        if (shaderTable->getDesc().isCached)
+            return shaderTable->cacheState;
+
+        auto it = m_UncachedShaderTableStates.find(shaderTable);
+
+        if (it != m_UncachedShaderTableStates.end())
+        {
+            return *it->second;
+        }
+
+        std::unique_ptr<ShaderTableState> statePtr = std::make_unique<ShaderTableState>();
+
+        ShaderTableState& state = *statePtr;
+        m_UncachedShaderTableStates.insert(std::make_pair(shaderTable, std::move(statePtr)));
+
+        return state;
+    }
+
     void CommandList::setRayTracingState(const rt::State& state)
     {
         if (!state.shaderTable)
@@ -1228,15 +1336,7 @@ namespace nvrhi::vulkan
 
         if (m_EnableAutomaticBarriers)
         {
-            for (size_t i = 0; i < state.bindings.size() && i < pso->desc.globalBindingLayouts.size(); i++)
-            {
-                BindingLayout* layout = checked_cast<BindingLayout*>(pso->desc.globalBindingLayouts[i].Get());
-
-                if ((layout->desc.visibility & ShaderType::AllRayTracing) == 0)
-                    continue;
-                
-                setResourceStatesForBindingSet(state.bindings[i]);
-            }
+            insertRayTracingResourceBarriers(state);
         }
 
         if (m_CurrentRayTracingState.shaderTable != state.shaderTable)
@@ -1256,23 +1356,31 @@ namespace nvrhi::vulkan
             bindBindingSets(vk::PipelineBindPoint::eRayTracingKHR, pso->pipelineLayout, state.bindings, pso->descriptorSetIdxToBindingIdx);
         }
 
-        // Rebuild the SBT if we're binding a new one or if it's been changed since the previous bind.
+        // Rebuild the SBT if it's uncached and we're using it for the first time in this command list,
+        // or if it's been changed since the previous build.
 
-        if (m_CurrentRayTracingState.shaderTable != shaderTable || m_CurrentShaderTablePointers.version != shaderTable->version)
+        bool const shaderTableCached = shaderTable->getDesc().isCached;
+        ShaderTableState& shaderTableState = getShaderTableState(shaderTable);
+        bool const rebuildShaderTable = shaderTableState.version != shaderTable->version;
+
+        if (rebuildShaderTable)
         {
-            const uint32_t shaderGroupHandleSize = m_Context.rayTracingPipelineProperties.shaderGroupHandleSize;
-            const uint32_t shaderGroupBaseAlignment = m_Context.rayTracingPipelineProperties.shaderGroupBaseAlignment;
+            size_t const shaderTableSize = shaderTable->getUploadSize();
 
-            const uint32_t shaderTableSize = shaderTable->getNumEntries() * shaderGroupBaseAlignment;
+            if (shaderTableCached && (!shaderTable->cache || shaderTableSize > shaderTable->cache->getDesc().byteSize))
+            {
+                m_Context.error("Required shader table size is larger than the allocated cache. Increase ShaderTableDesc::maxEntries.");
+                return;
+            }
 
-            // First, allocate a piece of the upload buffer. That will be our SBT on the device.
+            // Allocate a piece of the upload buffer. That will be our SBT on the device.
 
             Buffer* uploadBuffer = nullptr;
             uint64_t uploadOffset = 0;
             uint8_t* uploadCpuVA = nullptr;
             bool allocated = m_UploadManager->suballocateBuffer(shaderTableSize, &uploadBuffer, &uploadOffset, (void**)&uploadCpuVA,
                 MakeVersion(m_CurrentCmdBuf->recordingID, m_CommandListParameters.queueType, false),
-                shaderGroupBaseAlignment);
+                m_Context.rayTracingPipelineProperties.shaderGroupBaseAlignment);
 
             if (!allocated)
             {
@@ -1283,81 +1391,36 @@ namespace nvrhi::vulkan
             assert(uploadCpuVA);
             assert(uploadBuffer);
 
-            // Copy the shader and group handles into the device SBT, record the pointers.
+            vk::DeviceAddress const effectiveGpuVA = shaderTableCached
+                ? shaderTable->cache->getGpuVirtualAddress()
+                : uploadBuffer->getGpuVirtualAddress() + uploadOffset;
 
-            vk::StridedDeviceAddressRegionKHR rayGenHandle;
-            vk::StridedDeviceAddressRegionKHR missHandles;
-            vk::StridedDeviceAddressRegionKHR hitGroupHandles;
-            vk::StridedDeviceAddressRegionKHR callableHandles;
+            // Build the SBT in the upload buffer.
 
-            // ... RayGen
+            shaderTable->bake(uploadCpuVA, effectiveGpuVA, shaderTableState);
 
-            uint32_t sbtIndex = 0;
-            memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
-                pso->shaderGroupHandles.data() + shaderGroupHandleSize * shaderTable->rayGenerationShader,
-                shaderGroupHandleSize);
-            rayGenHandle.setDeviceAddress(uploadBuffer->deviceAddress + uploadOffset + sbtIndex * shaderGroupBaseAlignment);
-            rayGenHandle.setSize(shaderGroupBaseAlignment);
-            rayGenHandle.setStride(shaderGroupBaseAlignment);
-            sbtIndex++;
+            // Copy the built SBT into the cache buffer, if it exists.
 
-            // ... Miss
-
-            if (!shaderTable->missShaders.empty())
+            if (shaderTableCached)
             {
-                missHandles.setDeviceAddress(uploadBuffer->deviceAddress + uploadOffset + sbtIndex * shaderGroupBaseAlignment);
-                for (uint32_t shaderGroupIndex : shaderTable->missShaders)
-                {
-                    memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
-                        pso->shaderGroupHandles.data() + shaderGroupHandleSize * shaderGroupIndex,
-                        shaderGroupHandleSize);
-                    sbtIndex++;
-                }
-                missHandles.setSize(shaderGroupBaseAlignment * uint32_t(shaderTable->missShaders.size()));
-                missHandles.setStride(shaderGroupBaseAlignment);
+                copyBuffer(shaderTable->cache, 0, uploadBuffer, uploadOffset, shaderTableSize);
             }
-
-            // ... Hit Groups
-
-            if (!shaderTable->hitGroups.empty())
-            {
-                hitGroupHandles.setDeviceAddress(uploadBuffer->deviceAddress + uploadOffset + sbtIndex * shaderGroupBaseAlignment);
-                for (uint32_t shaderGroupIndex : shaderTable->hitGroups)
-                {
-                    memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
-                        pso->shaderGroupHandles.data() + shaderGroupHandleSize * shaderGroupIndex,
-                        shaderGroupHandleSize);
-                    sbtIndex++;
-                }
-                hitGroupHandles.setSize(shaderGroupBaseAlignment * uint32_t(shaderTable->hitGroups.size()));
-                hitGroupHandles.setStride(shaderGroupBaseAlignment);
-            }
-
-            // ... Callable
-
-            if (!shaderTable->callableShaders.empty())
-            {
-                callableHandles.setDeviceAddress(uploadBuffer->deviceAddress + uploadOffset + sbtIndex * shaderGroupBaseAlignment);
-                for (uint32_t shaderGroupIndex : shaderTable->callableShaders)
-                {
-                    memcpy(uploadCpuVA + sbtIndex * shaderGroupBaseAlignment,
-                        pso->shaderGroupHandles.data() + shaderGroupHandleSize * shaderGroupIndex,
-                        shaderGroupHandleSize);
-                    sbtIndex++;
-                }
-                callableHandles.setSize(shaderGroupBaseAlignment * uint32_t(shaderTable->callableShaders.size()));
-                callableHandles.setStride(shaderGroupBaseAlignment);
-            }
-
-            // Store the device pointers to the SBT for use in dispatchRays later, and the version.
-
-            m_CurrentShaderTablePointers.rayGen = rayGenHandle;
-            m_CurrentShaderTablePointers.miss = missHandles;
-            m_CurrentShaderTablePointers.hitGroups = hitGroupHandles;
-            m_CurrentShaderTablePointers.callable = callableHandles;
-            m_CurrentShaderTablePointers.version = shaderTable->version;
         }
-        
+
+        if (shaderTableCached)
+        {
+            // Ensure that the cache buffer is in the right state.
+            // It's not conditional on m_EnableAutomaticBarriers because the cache is an internal object,
+            // completely invisible to the application, and so its state must be handled by NVRHI.
+            setBufferState(shaderTable->cache, nvrhi::ResourceStates::ShaderResource);
+        }
+
+        if (shaderTableCached || rebuildShaderTable)
+        {
+            // If the shader table is not cached, then it's rebuilt at least once per CL, and we can AddRef it once then
+            m_CurrentCmdBuf->referencedResources.push_back(shaderTable);
+        }
+
         commitBarriers();
 
         m_CurrentGraphicsState = GraphicsState();
@@ -1373,11 +1436,13 @@ namespace nvrhi::vulkan
 
         updateRayTracingVolatileBuffers();
 
+        ShaderTableState& shaderTableState = getShaderTableState(m_CurrentRayTracingState.shaderTable);
+
         m_CurrentCmdBuf->cmdBuf.traceRaysKHR(
-            &m_CurrentShaderTablePointers.rayGen,
-            &m_CurrentShaderTablePointers.miss,
-            &m_CurrentShaderTablePointers.hitGroups,
-            &m_CurrentShaderTablePointers.callable,
+            &shaderTableState.rayGen,
+            &shaderTableState.miss,
+            &shaderTableState.hitGroups,
+            &shaderTableState.callable,
             args.width, args.height, args.depth);
     }
 
@@ -1414,7 +1479,7 @@ namespace nvrhi::vulkan
 
     rt::PipelineHandle Device::createRayTracingPipeline(const rt::PipelineDesc& desc)
     {
-        RayTracingPipeline* pso = new RayTracingPipeline(m_Context);
+        RayTracingPipeline* pso = new RayTracingPipeline(m_Context, this);
         pso->desc = desc;
 
         vk::Result res = createPipelineLayout(
@@ -1611,10 +1676,32 @@ namespace nvrhi::vulkan
         }
     }
 
-    rt::ShaderTableHandle RayTracingPipeline::createShaderTable()
+    rt::ShaderTableHandle RayTracingPipeline::createShaderTable(rt::ShaderTableDesc const& stDesc)
     {
-        ShaderTable* st = new ShaderTable(m_Context, this);
-        return rt::ShaderTableHandle::Create(st);
+        BufferHandle cache;
+        if (stDesc.isCached)
+        {
+            if (stDesc.maxEntries == 0)
+            {
+                m_Context.error("maxEntries must be nonzero for a cached ShaderTable");
+                return nullptr;
+            }
+            
+            BufferDesc bufferDesc = BufferDesc()
+                .setDebugName(stDesc.debugName)
+                .setByteSize(getShaderTableEntrySize() * stDesc.maxEntries)
+                .setIsShaderBindingTable(true)
+                .enableAutomaticStateTracking(ResourceStates::ShaderResource);
+
+            cache = m_Device->createBuffer(bufferDesc);
+            if (!cache)
+                return nullptr;
+        }
+
+        ShaderTable* shaderTable = new ShaderTable(m_Context, this, stDesc);
+        shaderTable->cache = cache;
+
+        return rt::ShaderTableHandle::Create(shaderTable);
     }
 
     Object RayTracingPipeline::getNativeObject(ObjectType objectType)

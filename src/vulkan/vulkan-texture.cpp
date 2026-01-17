@@ -286,11 +286,11 @@ namespace nvrhi::vulkan
 
         view.subresource = subresource;
 
-        auto vkformat = nvrhi::vulkan::convertFormat(format);
+        auto vkFormat = nvrhi::vulkan::convertFormat(format);
 
-        vk::ImageAspectFlags aspectflags = guessSubresourceImageAspectFlags(vk::Format(vkformat), viewtype);
+        vk::ImageAspectFlags aspectFlags = guessSubresourceImageAspectFlags(vk::Format(vkFormat), viewtype);
         view.subresourceRange = vk::ImageSubresourceRange()
-                                    .setAspectMask(aspectflags)
+                                    .setAspectMask(aspectFlags)
                                     .setBaseMipLevel(subresource.baseMipLevel)
                                     .setLevelCount(subresource.numMipLevels)
                                     .setBaseArrayLayer(subresource.baseArraySlice)
@@ -301,7 +301,7 @@ namespace nvrhi::vulkan
         auto viewInfo = vk::ImageViewCreateInfo()
                         .setImage(image)
                         .setViewType(imageViewType)
-                        .setFormat(vk::Format(vkformat))
+                        .setFormat(vk::Format(vkFormat))
                         .setSubresourceRange(view.subresourceRange);
 
         auto usageInfo = vk::ImageViewUsageCreateInfo()
@@ -448,6 +448,7 @@ namespace nvrhi::vulkan
         {
             requireTextureState(src, TextureSubresourceSet(resolvedSrcSlice.mipLevel, 1, resolvedSrcSlice.arraySlice, 1), ResourceStates::CopySource);
             requireTextureState(dst, TextureSubresourceSet(resolvedDstSlice.mipLevel, 1, resolvedDstSlice.arraySlice, 1), ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -526,6 +527,7 @@ namespace nvrhi::vulkan
         if (m_EnableAutomaticBarriers)
         {
             requireTextureState(dest, TextureSubresourceSet(mipLevel, 1, arraySlice, 1), ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -572,6 +574,7 @@ namespace nvrhi::vulkan
         {
             requireTextureState(src, srcSR, ResourceStates::ResolveSource);
             requireTextureState(dest, dstSR, ResourceStates::ResolveDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
@@ -591,6 +594,7 @@ namespace nvrhi::vulkan
         if (m_EnableAutomaticBarriers)
         {
             requireTextureState(texture, subresources, ResourceStates::CopyDest);
+            m_BindingStatesDirty = true;
         }
         commitBarriers();
 
