@@ -951,6 +951,66 @@ namespace nvrhi::validation
         m_CommandList->dispatchMesh(groupsX, groupsY, groupsZ);
     }
 
+    void CommandListWrapper::dispatchMeshIndirect(uint32_t offsetBytes, uint32_t maxDrawCount)
+    {
+        if (!requireOpenState())
+            return;
+
+        if (!requireType(CommandQueue::Graphics, "dispatchMesh"))
+            return;
+
+        if (!m_MeshletStateSet)
+        {
+            error("Meshlet state is not set before a dispatchMesh call.\n"
+                "Note that setting graphics or compute state invalidates the meshlet state.");
+            return;
+        }
+
+        if (!validatePushConstants("meshlet", "setMeshletState"))
+            return;
+
+        if (!m_CurrentMeshletState.indirectParams)
+        {
+            error("Indirect params buffer is not set before a dispatchMeshIndirect call.");
+            return;
+        }
+
+        m_CommandList->dispatchMeshIndirect(offsetBytes, maxDrawCount);
+    }
+
+    void CommandListWrapper::dispatchMeshIndirectCount(uint32_t paramOffsetBytes, uint32_t countOffsetBytes, uint32_t maxDrawCount)
+    {
+        if (!requireOpenState())
+            return;
+
+        if (!requireType(CommandQueue::Graphics, "dispatchMesh"))
+            return;
+
+        if (!m_MeshletStateSet)
+        {
+            error("Meshlet state is not set before a dispatchMesh call.\n"
+                "Note that setting graphics or compute state invalidates the meshlet state.");
+            return;
+        }
+
+        if (!validatePushConstants("meshlet", "setMeshletState"))
+            return;
+
+        if (!m_CurrentMeshletState.indirectParams)
+        {
+            error("Indirect params buffer is not set before a dispatchMeshIndirectCount call.");
+            return;
+        }
+
+        if (!m_CurrentMeshletState.indirectCountBuffer)
+        {
+            error("Indirect count buffer is not set before a dispatchMeshIndirectCount call.");
+            return;
+        }
+
+        m_CommandList->dispatchMeshIndirectCount(paramOffsetBytes, countOffsetBytes, maxDrawCount);
+    }
+
     void CommandListWrapper::beginTimerQuery(ITimerQuery* query)
     {
         if (!requireOpenState())
