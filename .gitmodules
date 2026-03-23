@@ -1,9 +1,9 @@
 [submodule "rtxmu"]
 	path = rtxmu
-	url = https://github.com/NVIDIA-RTX/RTXMU.git
+	url = git@github.com:NVIDIA-RTX/RTXMU.git
 [submodule "thirdparty/Vulkan-Headers"]
 	path = thirdparty/Vulkan-Headers
-	url = https://github.com/KhronosGroup/Vulkan-Headers.git
+	url = git@github.com:KhronosGroup/Vulkan-Headers.git
 [submodule "thirdparty/DirectX-Headers"]
 	path = thirdparty/DirectX-Headers
-	url = https://github.com/microsoft/DirectX-Headers.git
+	url = git@github.com:microsoft/DirectX-Headers.git
