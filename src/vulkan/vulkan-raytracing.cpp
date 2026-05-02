@@ -110,10 +110,10 @@ namespace nvrhi::vulkan
             vk::AccelerationStructureGeometryTrianglesDataKHR dstt;
 
             dstt.setIndexType(convertIndexFormatToType(srct.indexFormat, true));
-            dstt.setIndexData(getBufferAddress(srct.indexBuffer, srct.indexOffset));
+            dstt.setIndexData(getBufferAddress(srct.indexBuffer, srct.indexOffset * getFormatInfo(srct.indexFormat).bytesPerBlock));
 
             dstt.setVertexFormat(vk::Format(convertFormat(srct.vertexFormat)));
-            dstt.setVertexData(getBufferAddress(srct.vertexBuffer, srct.vertexOffset));
+            dstt.setVertexData(getBufferAddress(srct.vertexBuffer, srct.vertexOffset * srct.vertexStride));
             dstt.setVertexStride(srct.vertexStride);
             dstt.setMaxVertex(std::max(srct.vertexCount, 1u) - 1u);
 

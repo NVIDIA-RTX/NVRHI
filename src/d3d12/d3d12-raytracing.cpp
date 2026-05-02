@@ -548,12 +548,12 @@ namespace nvrhi::d3d12
         const auto& triangles = geometryDesc.geometryData.triangles;
 
         if (triangles.indexBuffer)
-            outDxrTriangles.IndexBuffer = checked_cast<Buffer*>(triangles.indexBuffer)->gpuVA + triangles.indexOffset;
+            outDxrTriangles.IndexBuffer = checked_cast<Buffer*>(triangles.indexBuffer)->gpuVA + triangles.indexOffset * getFormatInfo(triangles.indexFormat).bytesPerBlock;
         else
             outDxrTriangles.IndexBuffer = 0;
 
         if (triangles.vertexBuffer)
-            outDxrTriangles.VertexBuffer.StartAddress = checked_cast<Buffer*>(triangles.vertexBuffer)->gpuVA + triangles.vertexOffset;
+            outDxrTriangles.VertexBuffer.StartAddress = checked_cast<Buffer*>(triangles.vertexBuffer)->gpuVA + triangles.vertexOffset * triangles.vertexStride;
         else
             outDxrTriangles.VertexBuffer.StartAddress = 0;
 
