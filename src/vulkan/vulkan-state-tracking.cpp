@@ -89,7 +89,7 @@ namespace nvrhi::vulkan
         {
             for (size_t i = 0; i < newBindings.size(); i++)
             {
-                if (newBindings[i]->getDesc() == nullptr) // Ignore bindless sets
+				if (newBindings[i] == nullptr || newBindings[i]->getDesc() == nullptr) // Ignore bindless sets
                     continue;
 
                 BindingSet const* bindingSet = checked_cast<BindingSet const*>(newBindings[i]);

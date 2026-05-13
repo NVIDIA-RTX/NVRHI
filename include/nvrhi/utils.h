@@ -97,6 +97,7 @@ namespace nvrhi::utils
     NVRHI_API const char* TextureDimensionToString(TextureDimension dimension);
     NVRHI_API const char* DebugNameToString(const std::string& debugName);
     NVRHI_API const char* ShaderStageToString(ShaderType stage);
+    NVRHI_API ShaderType ShaderStageFromString(const char* string);
     NVRHI_API const char* ResourceTypeToString(ResourceType type);
     NVRHI_API const char* FormatToString(Format format);
     NVRHI_API const char* CommandQueueToString(CommandQueue queue);
