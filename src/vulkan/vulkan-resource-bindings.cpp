@@ -385,10 +385,21 @@ namespace nvrhi::vulkan
                 const auto textureViewType = getTextureViewType(binding.format, texture->desc.format);
                 auto& view = texture->getSubresourceView(subresource, binding.dimension, binding.format, vk::ImageUsageFlagBits::eSampled, textureViewType);
 
+                // Depth textures bound as SRV must use eDepthStencilReadOnlyOptimal because they may
+                // simultaneously be bound as a read-only depth-stencil attachment (DSV). Vulkan requires
+                // the image layout declared in the descriptor to match the actual image layout, and
+                // eDepthStencilReadOnlyOptimal is compatible with both depth attachment reads and
+                // shader sampling, whereas eShaderReadOnlyOptimal is not valid for depth images in
+                // that combined usage.
+                const FormatInfo& texFormatInfo = getFormatInfo(texture->desc.format);
+                const vk::ImageLayout srvLayout = (texFormatInfo.hasDepth || texFormatInfo.hasStencil)
+                    ? vk::ImageLayout::eDepthStencilReadOnlyOptimal
+                    : vk::ImageLayout::eShaderReadOnlyOptimal;
+
                 auto& imageInfo = descriptorImageInfo.emplace_back();
                 imageInfo = vk::DescriptorImageInfo()
                     .setImageView(view.view)
-                    .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+                    .setImageLayout(srvLayout);
 
                 generateWriteDescriptorData(
                     registerOffset + binding.slot,
@@ -757,10 +768,15 @@ namespace nvrhi::vulkan
                 const auto textureViewType = getTextureViewType(binding.format, texture->desc.format);
                 auto& view = texture->getSubresourceView(subresource, binding.dimension, binding.format, vk::ImageUsageFlagBits::eSampled, textureViewType);
 
+                const FormatInfo& texFormatInfo = getFormatInfo(texture->desc.format);
+                const vk::ImageLayout srvLayout = (texFormatInfo.hasDepth || texFormatInfo.hasStencil)
+                    ? vk::ImageLayout::eDepthStencilReadOnlyOptimal
+                    : vk::ImageLayout::eShaderReadOnlyOptimal;
+
                 auto& imageInfo = descriptorImageInfo.emplace_back();
                 imageInfo = vk::DescriptorImageInfo()
                     .setImageView(view.view)
-                    .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+                    .setImageLayout(srvLayout);
 
                 generateWriteDescriptorData(layoutBinding.binding,
                     convertResourceType(binding.type),

@@ -336,9 +336,21 @@ namespace nvrhi::vulkan
                     // If we're converting the state for an image, make sure that the requested state bits
                     // do not translate to different image layouts, which would be impossible to combine.
                     // For buffers, the image layout doesn't matter.
+                    //
+                    // Exception: ShaderResource (eShaderReadOnlyOptimal) combined with DepthRead
+                    // (eDepthStencilReadOnlyOptimal) is a valid combination in Vulkan. depth images bound
+                    // simultaneously as a DSV read-only and an SRV must use eDepthStencilReadOnlyOptimal,
+                    // which is compatible with both depth attachment reads and shader sampling.
+                    auto isDepthShaderReadCombination = [](vk::ImageLayout a, vk::ImageLayout b) {
+                        return (a == vk::ImageLayout::eShaderReadOnlyOptimal &&
+                                b == vk::ImageLayout::eDepthStencilReadOnlyOptimal) ||
+                               (a == vk::ImageLayout::eDepthStencilReadOnlyOptimal &&
+                                b == vk::ImageLayout::eShaderReadOnlyOptimal);
+                    };
                     assert(result.imageLayout == vk::ImageLayout::eUndefined
                         || mapping.imageLayout == vk::ImageLayout::eUndefined
-                        || result.imageLayout == mapping.imageLayout);
+                        || result.imageLayout == mapping.imageLayout
+                        || isDepthShaderReadCombination(result.imageLayout, mapping.imageLayout));
                 }
 
                 result.nvrhiState = ResourceStates(result.nvrhiState | mapping.nvrhiState);
@@ -346,7 +358,23 @@ namespace nvrhi::vulkan
                 result.stageFlags |= mapping.stageFlags;
                 if (isImage && mapping.imageLayout != vk::ImageLayout::eUndefined)
                 {
-                    result.imageLayout = mapping.imageLayout;
+                    // When combining ShaderResource (eShaderReadOnlyOptimal) with DepthRead
+                    // (eDepthStencilReadOnlyOptimal), always prefer eDepthStencilReadOnlyOptimal
+                    // as it is the only layout valid for a depth image used simultaneously as
+                    // a read-only depth attachment and a sampled shader resource.
+                    if (result.imageLayout == vk::ImageLayout::eShaderReadOnlyOptimal &&
+                        mapping.imageLayout == vk::ImageLayout::eDepthStencilReadOnlyOptimal)
+                    {
+                        result.imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal;
+                    }
+                    else if (result.imageLayout != vk::ImageLayout::eDepthStencilReadOnlyOptimal ||
+                             mapping.imageLayout != vk::ImageLayout::eShaderReadOnlyOptimal)
+                    {
+                        // Normal case: last non-undefined layout wins
+                        result.imageLayout = mapping.imageLayout;
+                    }
+                    // else: result already holds eDepthStencilReadOnlyOptimal and the incoming
+                    // mapping is eShaderReadOnlyOptimal, keep eDepthStencilReadOnlyOptimal
                 }
 
                 stateTmp &= ~bit;

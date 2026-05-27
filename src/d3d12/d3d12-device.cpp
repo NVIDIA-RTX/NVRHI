@@ -178,6 +178,10 @@ namespace nvrhi::d3d12
             csDesc.ByteStride = 12;
             argDesc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
             m_Context.device->CreateCommandSignature(&csDesc, nullptr, IID_PPV_ARGS(&m_Context.dispatchIndirectSignature));
+
+            csDesc.ByteStride = 12;
+            argDesc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH;
+            m_Context.device->CreateCommandSignature(&csDesc, nullptr, IID_PPV_ARGS(&m_Context.dispatchMeshIndirectSignature));
         }
         
         m_FenceEvent = CreateEvent(nullptr, false, false, nullptr);

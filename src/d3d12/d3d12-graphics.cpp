@@ -422,7 +422,7 @@ namespace nvrhi::d3d12
             m_ActiveCommandList->commandList->IASetVertexBuffers(0, maxVbIndex + 1, VBVs);
         }
 
-        if (m_EnableAutomaticBarriers && state.indexBuffer.buffer && (m_BindingStatesDirty || updateVertexBuffers))
+        if (m_EnableAutomaticBarriers && !state.vertexBuffers.empty() && (m_BindingStatesDirty || updateVertexBuffers))
         {
             for (const VertexBufferBinding& binding : state.vertexBuffers)
             {

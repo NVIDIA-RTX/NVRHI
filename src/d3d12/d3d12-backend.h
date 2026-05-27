@@ -148,6 +148,7 @@ namespace nvrhi::d3d12
         RefCountPtr<ID3D12CommandSignature> drawIndirectSignature;
         RefCountPtr<ID3D12CommandSignature> drawIndexedIndirectSignature;
         RefCountPtr<ID3D12CommandSignature> dispatchIndirectSignature;
+        RefCountPtr<ID3D12CommandSignature> dispatchMeshIndirectSignature;
         RefCountPtr<ID3D12QueryHeap> timerQueryHeap;
         RefCountPtr<Buffer> timerQueryResolveBuffer;
 
@@ -180,6 +181,7 @@ namespace nvrhi::d3d12
 
         HRESULT allocateResources(D3D12_DESCRIPTOR_HEAP_TYPE heapType, uint32_t numDescriptors, bool shaderVisible);
         void copyToShaderVisibleHeap(DescriptorIndex index, uint32_t count = 1);
+        D3D12_DESCRIPTOR_HEAP_TYPE getHeapType() const { return m_HeapType; }
         
         DescriptorIndex allocateDescriptors(uint32_t count) override;
         DescriptorIndex allocateDescriptor() override;
@@ -663,6 +665,7 @@ namespace nvrhi::d3d12
     public:
         uint32_t capacity = 0;
         DescriptorIndex firstDescriptor = 0;
+        BindingLayoutHandle layout;
 
         DescriptorTable(DeviceResources& resources)
             : m_Resources(resources)
@@ -671,9 +674,12 @@ namespace nvrhi::d3d12
         ~DescriptorTable() override;
 
         const BindingSetDesc* getDesc() const override { return nullptr; }
-        IBindingLayout* getLayout() const override { return nullptr; }
+        IBindingLayout* getLayout() const override { return layout; }
         uint32_t getCapacity() const override { return capacity; }
         uint32_t getFirstDescriptorIndexInHeap() const override { return firstDescriptor; }
+        
+        bool isSamplerTable() const;
+        StaticDescriptorHeap& getDescriptorHeap() const;
 
     private:
         DeviceResources& m_Resources;
@@ -1002,6 +1008,8 @@ namespace nvrhi::d3d12
 
         void setMeshletState(const MeshletState& state) override;
         void dispatchMesh(uint32_t groupsX, uint32_t groupsY = 1, uint32_t groupsZ = 1) override;
+        void dispatchMeshIndirect(uint32_t offsetBytes, uint32_t maxDrawCount) override;
+        void dispatchMeshIndirectCount(uint32_t paramOffsetBytes, uint32_t countOffsetBytes, uint32_t maxDrawCount) override;
 
         void setRayTracingState(const rt::State& state) override;
         void dispatchRays(const rt::DispatchRaysArguments& args) override;

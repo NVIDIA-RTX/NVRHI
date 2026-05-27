@@ -2759,6 +2759,7 @@ namespace nvrhi
         BindingSetVector bindings;
 
         IBuffer* indirectParams = nullptr;
+        IBuffer* indirectCountBuffer = nullptr;
 
         MeshletState& setPipeline(IMeshletPipeline* value) { pipeline = value; return *this; }
         MeshletState& setFramebuffer(IFramebuffer* value) { framebuffer = value; return *this; }
@@ -2766,6 +2767,7 @@ namespace nvrhi
         MeshletState& setBlendColor(const Color& value) { blendConstantColor = value; return *this; }
         MeshletState& addBindingSet(IBindingSet* value) { bindings.push_back(value); return *this; }
         MeshletState& setIndirectParams(IBuffer* value) { indirectParams = value; return *this; }
+        MeshletState& setIndirectCountBuffer(IBuffer* value) { indirectCountBuffer = value; return *this; }
         MeshletState& setDynamicStencilRefValue(uint8_t value) { dynamicStencilRefValue = value; return *this; }
     };
 
@@ -3364,6 +3366,24 @@ namespace nvrhi
         // - DX12: Maps to DispatchMesh.
         // - Vulkan: Maps to vkCmdDispatchMesh.
         virtual void dispatchMesh(uint32_t groupsX, uint32_t groupsY = 1, uint32_t groupsZ = 1) = 0;
+
+        // Draws meshlet primitives using the parameters provided in the indirect buffer specified in the prior
+        // call to setMeshletState(...). The memory layout in the buffer is the same for all graphics APIs and is
+        // described by the DispatchIndirectArguments structure.
+        // See the comment to dispatchMesh(...) for state information.
+        // - DX11: Not supported.
+        // - DX12: Maps to ExecuteIndirect with a predefined signature.
+        // - Vulkan: Maps to vkCmdDrawMeshTasksIndirectEXT.
+        virtual void dispatchMeshIndirect(uint32_t offsetBytes, uint32_t maxDrawCount) = 0;
+
+        // Draws meshlet primitives using the parameters provided in the indirect buffer specified in the prior
+        // call to setMeshletState(...).
+        // The draw count is read from the indirectCountBuffer specified in setMeshletState(...)
+        //   at offset 'countOffsetBytes'.
+        // - DX11: Not supported.
+        // - DX12: Not supported.
+        // - Vulkan: Maps to vkCmdDrawMeshTasksIndirectCountEXT.
+        virtual void dispatchMeshIndirectCount(uint32_t paramOffsetBytes, uint32_t countOffsetBytes, uint32_t maxDrawCount) = 0;
 
         // Sets the specified ray tracing state on the command list.
         // The state includes the shader table, which references the pipeline, and all bound resources.

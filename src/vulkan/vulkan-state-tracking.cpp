@@ -42,8 +42,19 @@ namespace nvrhi::vulkan
             switch(binding.type)  // NOLINT(clang-diagnostic-switch-enum)
             {
                 case ResourceType::Texture_SRV:
-                    requireTextureState(checked_cast<ITexture*>(binding.resourceHandle), binding.subresources, ResourceStates::ShaderResource);
+                {
+                    // Depth/stencil textures bound as SRV must transition to eDepthStencilReadOnlyOptimal,
+                    // not eShaderReadOnlyOptimal, because the descriptor already declares it as such
+                    // (see vulkan-resource-bindings.cpp). We achieve this by combining ShaderResource with
+                    // DepthRead, vulkan-constants.cpp resolves that combination to eDepthStencilReadOnlyOptimal.
+                    auto* texture = checked_cast<Texture*>(binding.resourceHandle);
+                    const FormatInfo& fmtInfo = getFormatInfo(texture->desc.format);
+                    const ResourceStates srvState = (fmtInfo.hasDepth || fmtInfo.hasStencil)
+                        ? (ResourceStates::ShaderResource | ResourceStates::DepthRead)
+                        : ResourceStates::ShaderResource;
+                    requireTextureState(texture, binding.subresources, srvState);
                     break;
+                }
 
                 case ResourceType::Texture_UAV:
                     requireTextureState(checked_cast<ITexture*>(binding.resourceHandle), binding.subresources, ResourceStates::UnorderedAccess);
@@ -128,6 +139,11 @@ namespace nvrhi::vulkan
             requireBufferState(state.indirectParams, ResourceStates::IndirectArgument);
         }
 
+        if (state.indirectCountBuffer && (m_BindingStatesDirty || state.indirectCountBuffer != m_CurrentGraphicsState.indirectCountBuffer))
+        {
+            requireBufferState(state.indirectCountBuffer, ResourceStates::IndirectArgument);
+        }
+
         m_BindingStatesDirty = false;
     }
 
@@ -159,6 +175,11 @@ namespace nvrhi::vulkan
             requireBufferState(state.indirectParams, ResourceStates::IndirectArgument);
         }
 
+        if (state.indirectCountBuffer && (m_BindingStatesDirty || state.indirectCountBuffer != m_CurrentMeshletState.indirectCountBuffer))
+        {
+            requireBufferState(state.indirectCountBuffer, ResourceStates::IndirectArgument);
+        }
+        
         m_BindingStatesDirty = false;
     }
 
