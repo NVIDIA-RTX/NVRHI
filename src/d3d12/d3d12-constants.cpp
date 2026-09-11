@@ -384,6 +384,115 @@ namespace nvrhi::d3d12
             D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS },
     };
 
+    // Per the D3D12 Enhanced Barriers spec, each access bit is only legal under a subset of sync scopes -
+    // ACCESS_INDEX_BUFFER for instance requires SYNC_ALL, SYNC_INDEX_INPUT or SYNC_DRAW. Returns the sync
+    // bits D3D12 accepts alongside a single access bit.
+    //
+    // SYNC_CONVERT_LINEAR_ALGEBRA_MATRIX postdates that spec table and appears nowhere in it. It is listed
+    // below for the access bits the ConvertCoopVecMatrix* entries in g_ResourceStateMap already pair it
+    // with, which the debug layer accepts today.
+    static D3D12_BARRIER_SYNC getCompatibleSyncBits(D3D12_BARRIER_ACCESS accessBit)
+    {
+        const D3D12_BARRIER_SYNC shading = D3D12_BARRIER_SYNC_VERTEX_SHADING | D3D12_BARRIER_SYNC_PIXEL_SHADING |
+            D3D12_BARRIER_SYNC_NON_PIXEL_SHADING | D3D12_BARRIER_SYNC_COMPUTE_SHADING | D3D12_BARRIER_SYNC_ALL_SHADING |
+            D3D12_BARRIER_SYNC_DRAW;
+
+        switch (accessBit)
+        {
+        case D3D12_BARRIER_ACCESS_VERTEX_BUFFER:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_VERTEX_SHADING | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_ALL_SHADING;
+        case D3D12_BARRIER_ACCESS_CONSTANT_BUFFER:
+            return D3D12_BARRIER_SYNC_ALL | shading;
+        case D3D12_BARRIER_ACCESS_INDEX_BUFFER:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_INDEX_INPUT | D3D12_BARRIER_SYNC_DRAW;
+        case D3D12_BARRIER_ACCESS_RENDER_TARGET:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_RENDER_TARGET;
+        case D3D12_BARRIER_ACCESS_UNORDERED_ACCESS:
+            return D3D12_BARRIER_SYNC_ALL | shading | D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW |
+                D3D12_BARRIER_SYNC_RAYTRACING | D3D12_BARRIER_SYNC_EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO |
+                D3D12_BARRIER_SYNC_CONVERT_LINEAR_ALGEBRA_MATRIX;
+        case D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE:
+        case D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+        case D3D12_BARRIER_ACCESS_SHADER_RESOURCE:
+            // The spec's SHADER_RESOURCE row does not list SYNC_RAYTRACING; raytracing reads go through
+            // SYNC_ALL_SHADING or SYNC_ALL. Kept narrow deliberately(see the note above areSyncAndAccessCompatible).
+            return D3D12_BARRIER_SYNC_ALL | shading | D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE |
+                D3D12_BARRIER_SYNC_CONVERT_LINEAR_ALGEBRA_MATRIX;
+        case D3D12_BARRIER_ACCESS_STREAM_OUTPUT:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_VERTEX_SHADING | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_ALL_SHADING;
+        case D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+        case D3D12_BARRIER_ACCESS_COPY_DEST:
+        case D3D12_BARRIER_ACCESS_COPY_SOURCE:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_COPY;
+        case D3D12_BARRIER_ACCESS_RESOLVE_DEST:
+        case D3D12_BARRIER_ACCESS_RESOLVE_SOURCE:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_RESOLVE;
+        case D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_COMPUTE_SHADING | D3D12_BARRIER_SYNC_ALL_SHADING |
+                D3D12_BARRIER_SYNC_RAYTRACING | D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE |
+                D3D12_BARRIER_SYNC_COPY_RAYTRACING_ACCELERATION_STRUCTURE |
+                D3D12_BARRIER_SYNC_EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO;
+        case D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_COMPUTE_SHADING | D3D12_BARRIER_SYNC_ALL_SHADING |
+                D3D12_BARRIER_SYNC_RAYTRACING | D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE |
+                D3D12_BARRIER_SYNC_COPY_RAYTRACING_ACCELERATION_STRUCTURE;
+        case D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE:
+            return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_PIXEL_SHADING | D3D12_BARRIER_SYNC_ALL_SHADING;
+        default:
+            // Unreachable for the access bits g_ResourceStateMap produces - each one has a case above. Note
+            // this switch is keyed on access bits, not sync bits, so a new sync scope never lands here: it
+            // reaches this function only through the access bit it is paired with, and has to be added to
+            // that bit's row. Permissive so that adding a new access bit cannot silently widen unrelated
+            // barriers to SYNC_ALL; validateResourceStateMap below catches the omission instead.
+            return D3D12_BARRIER_SYNC(~0u);
+        }
+    }
+
+    // Erring narrow here: an omitted sync bit costs at most a spurious widening to
+    // SYNC_ALL, whereas listing one D3D12 rejects lets an illegal barrier through unnoticed.
+    static bool areSyncAndAccessCompatible(D3D12_BARRIER_SYNC sync, D3D12_BARRIER_ACCESS access)
+    {
+        // ACCESS_COMMON is zero and places no constraint on the sync scope.
+        uint32_t accessBits = uint32_t(access);
+
+        while (accessBits != 0)
+        {
+            uint32_t const accessBit = accessBits & (0u - accessBits);
+            accessBits &= ~accessBit;
+
+            if ((uint32_t(sync) & ~uint32_t(getCompatibleSyncBits(D3D12_BARRIER_ACCESS(accessBit)))) != 0)
+                return false;
+        }
+
+        return true;
+    }
+
+#ifndef NDEBUG
+    // Verifies that every g_ResourceStateMap entry pairs its sync scope with an access type D3D12 accepts,
+    // i.e. that the table and getCompatibleSyncBits agree. Catches a transcription error in either one at
+    // startup, rather than as an INCOMPATIBLE_BARRIER_VALUES failure from the debug layer on whichever
+    // barrier happens to use the state first.
+    static bool validateResourceStateMap()
+    {
+        bool valid = true;
+
+        for (const EnhancedResourceStateMapping& mapping : g_ResourceStateMap)
+        {
+            if (!areSyncAndAccessCompatible(mapping.sync, mapping.access))
+            {
+                assert(!"g_ResourceStateMap entry pairs a sync scope with an incompatible access type");
+                valid = false;
+            }
+        }
+
+        return valid;
+    }
+
+    [[maybe_unused]] static const bool g_ResourceStateMapValidated = validateResourceStateMap();
+#endif
+
     EnhancedResourceStateMapping convertResourceStatesForEnhancedBarriers(ResourceStates state, bool isTexture)
     {
         EnhancedResourceStateMapping result = {};
@@ -392,6 +501,7 @@ namespace nvrhi::d3d12
 
         uint32_t stateTmp = uint32_t(state);
         uint32_t bitIndex = 0;
+        uint32_t numStatesSet = 0;
 
         while (stateTmp != 0 && bitIndex < numStateBits)
         {
@@ -406,6 +516,7 @@ namespace nvrhi::d3d12
                 result.nvrhiState = ResourceStates(result.nvrhiState | mapping.nvrhiState);
                 result.access |= mapping.access;
                 result.sync |= mapping.sync;
+                ++numStatesSet;
                 if (isTexture)
                 {
                     if (result.layout == D3D12_BARRIER_LAYOUT_COMMON)
@@ -425,6 +536,16 @@ namespace nvrhi::d3d12
         }
 
         assert(result.nvrhiState == state);
+
+        // Combining states ORs the sync and access bits of several entries independently, which can produce a
+        // pair that D3D12 rejects. Donut's Scene::CreateMeshBuffers for example asks for
+        // IndexBuffer|ShaderResource|AccelStructBuildInput on one buffer, yielding ACCESS_INDEX_BUFFER under
+        // SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE (INCOMPATIBLE_BARRIER_VALUES). SYNC_ALL is legal
+        // alongside every access bit, so widen to it rather than emitting an illegal barrier. Single states are
+        // left alone: the mappings above are authored to be valid on their own, including for sync scopes the
+        // compatibility table does not cover.
+        if (numStatesSet > 1 && !areSyncAndAccessCompatible(result.sync, result.access))
+            result.sync = D3D12_BARRIER_SYNC_ALL;
 
         return result;
     }
