@@ -387,6 +387,10 @@ namespace nvrhi::d3d12
     // Per the D3D12 Enhanced Barriers spec, each access bit is only legal under a subset of sync scopes -
     // ACCESS_INDEX_BUFFER for instance requires SYNC_ALL, SYNC_INDEX_INPUT or SYNC_DRAW. Returns the sync
     // bits D3D12 accepts alongside a single access bit.
+    //
+    // SYNC_CONVERT_LINEAR_ALGEBRA_MATRIX postdates that spec table and appears nowhere in it. It is listed
+    // below for the access bits the ConvertCoopVecMatrix* entries in g_ResourceStateMap already pair it
+    // with, which the debug layer accepts today.
     static D3D12_BARRIER_SYNC getCompatibleSyncBits(D3D12_BARRIER_ACCESS accessBit)
     {
         const D3D12_BARRIER_SYNC shading = D3D12_BARRIER_SYNC_VERTEX_SHADING | D3D12_BARRIER_SYNC_PIXEL_SHADING |
@@ -404,12 +408,17 @@ namespace nvrhi::d3d12
         case D3D12_BARRIER_ACCESS_RENDER_TARGET:
             return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_RENDER_TARGET;
         case D3D12_BARRIER_ACCESS_UNORDERED_ACCESS:
-            return D3D12_BARRIER_SYNC_ALL | shading | D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW;
+            return D3D12_BARRIER_SYNC_ALL | shading | D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW |
+                D3D12_BARRIER_SYNC_RAYTRACING | D3D12_BARRIER_SYNC_EMIT_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO |
+                D3D12_BARRIER_SYNC_CONVERT_LINEAR_ALGEBRA_MATRIX;
         case D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE:
         case D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ:
             return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_DEPTH_STENCIL;
         case D3D12_BARRIER_ACCESS_SHADER_RESOURCE:
-            return D3D12_BARRIER_SYNC_ALL | shading | D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
+            // The spec's SHADER_RESOURCE row does not list SYNC_RAYTRACING; raytracing reads go through
+            // SYNC_ALL_SHADING or SYNC_ALL. Kept narrow deliberately(see the note above areSyncAndAccessCompatible).
+            return D3D12_BARRIER_SYNC_ALL | shading | D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE |
+                D3D12_BARRIER_SYNC_CONVERT_LINEAR_ALGEBRA_MATRIX;
         case D3D12_BARRIER_ACCESS_STREAM_OUTPUT:
             return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_VERTEX_SHADING | D3D12_BARRIER_SYNC_DRAW | D3D12_BARRIER_SYNC_ALL_SHADING;
         case D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT:
@@ -432,12 +441,17 @@ namespace nvrhi::d3d12
         case D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE:
             return D3D12_BARRIER_SYNC_ALL | D3D12_BARRIER_SYNC_PIXEL_SHADING | D3D12_BARRIER_SYNC_ALL_SHADING;
         default:
-            // Unreachable for the access bits produced by g_ResourceStateMap. Permissive so that adding a
-            // new access bit there cannot silently widen unrelated barriers to SYNC_ALL.
+            // Unreachable for the access bits g_ResourceStateMap produces - each one has a case above. Note
+            // this switch is keyed on access bits, not sync bits, so a new sync scope never lands here: it
+            // reaches this function only through the access bit it is paired with, and has to be added to
+            // that bit's row. Permissive so that adding a new access bit cannot silently widen unrelated
+            // barriers to SYNC_ALL; validateResourceStateMap below catches the omission instead.
             return D3D12_BARRIER_SYNC(~0u);
         }
     }
 
+    // Erring narrow here: an omitted sync bit costs at most a spurious widening to
+    // SYNC_ALL, whereas listing one D3D12 rejects lets an illegal barrier through unnoticed.
     static bool areSyncAndAccessCompatible(D3D12_BARRIER_SYNC sync, D3D12_BARRIER_ACCESS access)
     {
         // ACCESS_COMMON is zero and places no constraint on the sync scope.
@@ -454,6 +468,30 @@ namespace nvrhi::d3d12
 
         return true;
     }
+
+#ifndef NDEBUG
+    // Verifies that every g_ResourceStateMap entry pairs its sync scope with an access type D3D12 accepts,
+    // i.e. that the table and getCompatibleSyncBits agree. Catches a transcription error in either one at
+    // startup, rather than as an INCOMPATIBLE_BARRIER_VALUES failure from the debug layer on whichever
+    // barrier happens to use the state first.
+    static bool validateResourceStateMap()
+    {
+        bool valid = true;
+
+        for (const EnhancedResourceStateMapping& mapping : g_ResourceStateMap)
+        {
+            if (!areSyncAndAccessCompatible(mapping.sync, mapping.access))
+            {
+                assert(!"g_ResourceStateMap entry pairs a sync scope with an incompatible access type");
+                valid = false;
+            }
+        }
+
+        return valid;
+    }
+
+    [[maybe_unused]] static const bool g_ResourceStateMapValidated = validateResourceStateMap();
+#endif
 
     EnhancedResourceStateMapping convertResourceStatesForEnhancedBarriers(ResourceStates state, bool isTexture)
     {
