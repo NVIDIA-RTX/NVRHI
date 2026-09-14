@@ -355,6 +355,7 @@ if (NVRHI_WITH_DX11)
 
         set_target_properties(${nvrhi_d3d11_target} PROPERTIES FOLDER "NVRHI")
         target_include_directories(${nvrhi_d3d11_target} PRIVATE include)
+        target_link_libraries(${nvrhi_d3d11_target} PUBLIC nvrhi)
     endif()
 
     target_link_libraries(${nvrhi_d3d11_target} PUBLIC d3d11 dxguid)
@@ -386,6 +387,7 @@ if (NVRHI_WITH_DX12)
 
         set_target_properties(${nvrhi_d3d12_target} PROPERTIES FOLDER "NVRHI")
         target_include_directories(${nvrhi_d3d12_target} PRIVATE include)
+        target_link_libraries(${nvrhi_d3d12_target} PUBLIC nvrhi)
     endif()
 
     if (NVRHI_WITH_RTXMU)
@@ -424,6 +426,7 @@ if (NVRHI_WITH_VULKAN)
 
         set_target_properties(${nvrhi_vulkan_target} PROPERTIES FOLDER "NVRHI")
         target_include_directories(${nvrhi_vulkan_target} PRIVATE include)
+        target_link_libraries(${nvrhi_vulkan_target} PUBLIC nvrhi)
     endif()
     
     if(WIN32)
