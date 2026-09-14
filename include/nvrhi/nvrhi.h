@@ -2130,7 +2130,8 @@ namespace nvrhi
 
             MutableSrvUavCbv,   // Corresponds to SPIR-V binding -fvk-bind-resource-heap (Counter resources ResourceDescriptorHeap)
                                 // Valid descriptor types: Texture_SRV, Texture_UAV, TypedBuffer_SRV, TypedBuffer_UAV,
-                                // StructuredBuffer_SRV, StructuredBuffer_UAV, RawBuffer_SRV, RawBuffer_UAV, ConstantBuffer
+                                // StructuredBuffer_SRV, StructuredBuffer_UAV, RawBuffer_SRV, RawBuffer_UAV, ConstantBuffer,
+                                // SamplerFeedbackTexture_UAV
 
             MutableCounters,    // Corresponds to SPIR-V binding -fvk-bind-counter-heap (Counter resources accessed via ResourceDescriptorHeap)
                                 // Valid descriptor types: StructuredBuffer_UAV
