@@ -112,6 +112,29 @@ namespace nvrhi::d3d12
         return DeviceHandle::Create(device);
     }
 
+    bool enableExperimentalFeatures([[maybe_unused]] IMessageCallback* messageCallback)
+    {
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        static const IID features[] = { D3D12ExperimentalShaderModels, D3D12RaytracingPreview };
+
+        const HRESULT hr = D3D12EnableExperimentalFeatures(_countof(features), features, nullptr, nullptr);
+
+        if (FAILED(hr) && messageCallback)
+        {
+            std::stringstream ss;
+            ss << "D3D12EnableExperimentalFeatures (DXR clusters / SM 6.10) failed with HRESULT 0x"
+               << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned int>(hr);
+            if (hr == E_NOINTERFACE)
+                ss << " - Windows Developer Mode is most likely disabled";
+            messageCallback->message(MessageSeverity::Warning, ss.str().c_str());
+        }
+
+        return SUCCEEDED(hr);
+#else
+        return false;
+#endif
+    }
+
     DeviceResources::DeviceResources(const Context& context, const DeviceDesc& desc)
         : renderTargetViewHeap(context)
         , depthStencilViewHeap(context)

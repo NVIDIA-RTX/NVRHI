@@ -113,6 +113,16 @@ The following extensions are supported:
 - Conservative Raster and other rasterizer features (Maxwell+)
 - HLSL Extensions through a fake UAV slot (see [this blog post](https://developer.nvidia.com/unlocking-gpu-intrinsics-hlsl))
 
+## DXR clusters Support (Preview)
+
+Set the `NVRHI_D3D12_WITH_DXRCLUSTER` CMake variable to `ON` to run cluster operations on DX12 through native DXR clusters instead of NVAPI. This requires:
+
+- Exactly version 1.722 of the preview D3D12 Agility SDK, with `NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR` set to its include directory; later previews are not guaranteed to work with NVIDIA driver 621.01
+- Windows Developer Mode, and a call to `nvrhi::d3d12::enableExperimentalFeatures()` before the D3D12 device is created
+- NVIDIA driver 621.01 or later
+
+With DXR clusters enabled, the NVAPI cluster operations are compiled out. DX12 indirect arguments use the `nvrhi::rt::cluster::dxr` layouts, while Vulkan keeps the `nvrhi::rt::cluster::nv` layouts. The cluster argument structs in `nvrhiHLSL.h` have 16-bit fields, so shaders that include it must be compiled with `-enable-16bit-types`.
+
 ## RTXMU Integration
 
 NVRHI includes an optional integration of the [RTXMU](https://github.com/NVIDIA-RTX/RTXMU) library. The library is downloaded at project configuration time using CMake FetchContent when the `NVRHI_WITH_RTXMU` CMake variable is set to `ON`. Similar to the platform header libraries, the RTXMU dependency can be configured using the following CMake variables:

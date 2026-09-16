@@ -28,7 +28,16 @@
 #define NOMINMAX
 #endif
 
+// The preview Agility SDK ships its headers flat, without the DirectX-Headers directx/ prefix.
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+#include <d3d12.h>
+// The DXR clusters cluster structs and the SM 6.10 cluster intrinsics are built against this preview.
+#if !defined(D3D12_PREVIEW_SDK_VERSION) || D3D12_PREVIEW_SDK_VERSION != 722
+#error "NVRHI_D3D12_WITH_DXRCLUSTER requires exactly the 1.722 preview D3D12 Agility SDK; later previews are not guaranteed to work with NVIDIA driver 621.01"
+#endif
+#else
 #include <directx/d3d12.h>
+#endif
 
 namespace nvrhi
 {
@@ -142,6 +151,13 @@ namespace nvrhi::d3d12
     };
 
     NVRHI_API DeviceHandle createDevice(const DeviceDesc& desc);
+
+    // Enables the experimental D3D12 features that DXR clusters and SM 6.10 require.
+    // Must be called before the application creates its ID3D12Device: changing feature
+    // enablement puts every live device in the process into DEVICE_REMOVED.
+    // Returns false when NVRHI was built without NVRHI_D3D12_WITH_DXRCLUSTER, or when the
+    // runtime refused (most often because Windows Developer Mode is off).
+    NVRHI_API bool enableExperimentalFeatures(IMessageCallback* messageCallback = nullptr);
 
     NVRHI_API DXGI_FORMAT convertFormat(nvrhi::Format format);
 }
