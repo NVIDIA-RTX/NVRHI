@@ -62,10 +62,15 @@
 #define NVRHI_WITH_NVAPI_DISPLACEMENT_MICROMAP (0)
 #endif
 
-#if NVRHI_D3D12_WITH_NVAPI && defined(NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER)
-#define NVRHI_WITH_NVAPI_CLUSTERS (1)
+// If using the DXR clusters cluster operations, ignore the NVAPI ones
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+    #define NVRHI_WITH_NVAPI_CLUSTERS (0)
 #else
-#define NVRHI_WITH_NVAPI_CLUSTERS (0)
+    #if NVRHI_D3D12_WITH_NVAPI && defined(NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER)
+        #define NVRHI_WITH_NVAPI_CLUSTERS (1)
+    #else
+        #define NVRHI_WITH_NVAPI_CLUSTERS (0)
+    #endif
 #endif
 
 // Line-Swept Spheres were added in NVAPI SDK 572.18
@@ -158,6 +163,9 @@ namespace nvrhi::d3d12
         RefCountPtr<ID3D12Device10> device10;
 #if NVRHI_D3D12_WITH_COOP_VECTOR_COMMON
         RefCountPtr<ID3D12DevicePreview> devicePreview;
+#endif
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        RefCountPtr<ID3D12DeviceRaytracing2> deviceRaytracing2;
 #endif
 #ifdef NVRHI_WITH_RTXMU
         std::unique_ptr<rtxmu::DxAccelStructManager> rtxMemUtil;
@@ -986,6 +994,9 @@ namespace nvrhi::d3d12
 #if NVRHI_D3D12_WITH_COOP_VECTOR_COMMON
         RefCountPtr<ID3D12GraphicsCommandListPreview> commandListPreview;
 #endif
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        RefCountPtr<ID3D12CommandListRaytracing2> commandListRaytracing2;
+#endif
         uint64_t lastSubmittedInstance = 0;
 #if NVRHI_WITH_AFTERMATH
         GFSDK_Aftermath_ContextHandle aftermathContext;
@@ -1215,6 +1226,22 @@ namespace nvrhi::d3d12
         std::shared_ptr<InternalCommandList> createInternalCommandList() const;
 
         void buildTopLevelAccelStructInternal(AccelStruct* as, D3D12_GPU_VIRTUAL_ADDRESS instanceData, size_t numInstances, rt::AccelStructBuildFlags buildFlags);
+
+#if NVRHI_WITH_NVAPI_CLUSTERS || NVRHI_D3D12_WITH_DXRCLUSTER
+        struct ClusterOperationAddresses
+        {
+            D3D12_GPU_VIRTUAL_ADDRESS scratch = 0;
+            D3D12_GPU_VIRTUAL_ADDRESS argCount = 0;
+            D3D12_GPU_VIRTUAL_ADDRESS results = 0;
+            D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE args = {};
+            D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE destinations = {};
+            D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE sizes = {};
+        };
+
+        // Allocates scratch, transitions the buffers and resolves their addresses. Returns false if
+        // there is nothing to execute or the scratch allocation failed.
+        bool prepareClusterOperation(const rt::cluster::OperationDesc& desc, ClusterOperationAddresses& out);
+#endif
     };
 
     class Device final : public RefCounter<IDevice>
@@ -1365,6 +1392,7 @@ namespace nvrhi::d3d12
         bool m_VariableRateShadingSupported = false;
         bool m_OpacityMicromapSupported = false;
         bool m_RayTracingClustersSupported = false;
+        bool m_RayTracingPositionFetchSupported = false;
         bool m_LinearSweptSpheresSupported = false;
         bool m_SpheresSupported = false;
         bool m_ShaderExecutionReorderingSupported = false;

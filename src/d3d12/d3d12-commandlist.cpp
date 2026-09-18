@@ -109,6 +109,9 @@ namespace nvrhi::d3d12
 #if NVRHI_D3D12_WITH_COOP_VECTOR_COMMON
         commandList->commandList->QueryInterface(IID_PPV_ARGS(&commandList->commandListPreview));
 #endif
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        commandList->commandList->QueryInterface(IID_PPV_ARGS(&commandList->commandListRaytracing2));
+#endif
 
 #if NVRHI_WITH_AFTERMATH
         if (m_Device->isAftermathEnabled())

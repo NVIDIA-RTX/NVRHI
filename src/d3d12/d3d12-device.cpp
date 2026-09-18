@@ -36,12 +36,14 @@ namespace nvrhi::d3d12
 {
     void Context::error(const std::string& message) const
     {
-        messageCallback->message(MessageSeverity::Error, message.c_str());
+        if (messageCallback)
+            messageCallback->message(MessageSeverity::Error, message.c_str());
     }
 
     void Context::info(const std::string& message) const
     {
-        messageCallback->message(MessageSeverity::Info, message.c_str());
+        if (messageCallback)
+            messageCallback->message(MessageSeverity::Info, message.c_str());
     }
 
 #if NVRHI_D3D12_WITH_NVAPI
@@ -285,6 +287,10 @@ namespace nvrhi::d3d12
 #endif
         }
 
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        m_Context.device->QueryInterface(IID_PPV_ARGS(&m_Context.deviceRaytracing2));
+#endif
+
 #if NVRHI_D3D12_WITH_COOP_VECTOR_COMMON
         if (SUCCEEDED(m_Context.device->QueryInterface(&m_Context.devicePreview)))
         {
@@ -425,6 +431,42 @@ namespace nvrhi::d3d12
         }
 #endif
 #endif // #if NVRHI_WITH_NVAPI_OPACITY_MICROMAPS
+
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        if (!m_Context.deviceRaytracing2)
+        {
+            m_Context.info("DXR clusters: the device does not expose ID3D12DeviceRaytracing2");
+        }
+        else
+        {
+            D3D12_FEATURE_DATA_D3D12_OPTIONS_RAYTRACING2 raytracing2 = {};
+            const HRESULT hr = m_Context.device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2, &raytracing2, sizeof(raytracing2));
+            if (FAILED(hr))
+            {
+                std::stringstream ss;
+                ss << "DXR clusters: CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2) failed with HRESULT 0x"
+                   << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned int>(hr);
+                m_Context.info(ss.str());
+            }
+            else
+            {
+                m_RayTracingClustersSupported = raytracing2.ClustersAndPTLASSupported;
+                if (!m_RayTracingClustersSupported)
+                    m_Context.info("DXR clusters: the driver reports ClustersAndPTLASSupported = FALSE");
+            }
+        }
+
+        {
+            // TriangleObjectPositions() is a Shader Model 6.10 intrinsic.
+            D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_10 };
+            m_RayTracingPositionFetchSupported = m_RayTracingSupported
+                && SUCCEEDED(m_Context.device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel)))
+                && shaderModel.HighestShaderModel >= D3D_SHADER_MODEL_6_10;
+        }
+#else
+        // NvRtTriangleObjectPositions() is an NVAPI HLSL extension.
+        m_RayTracingPositionFetchSupported = m_RayTracingSupported && m_HlslExtensionsSupported;
+#endif // #if NVRHI_D3D12_WITH_DXRCLUSTER
 
 #if NVRHI_WITH_NVAPI_CLUSTERS
         if (m_NvapiIsInitialized)
@@ -802,10 +844,7 @@ namespace nvrhi::d3d12
         case Feature::RayTracingClusters:
             return m_RayTracingClustersSupported;
         case Feature::RayTracingPositionFetch:
-            // Exposed through the NVAPI HLSL extensions (NvRtTriangleObjectPositions),
-            // which ride the shader extension UAV slot -- so it needs both ray
-            // tracing and an initialized NVAPI shader-extension path.
-            return m_RayTracingSupported && m_HlslExtensionsSupported;
+            return m_RayTracingPositionFetchSupported;
         case Feature::RayQuery:
             return m_TraceRayInlineSupported;
         case Feature::FastGeometryShader:

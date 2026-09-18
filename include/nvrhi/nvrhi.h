@@ -1901,7 +1901,8 @@ namespace nvrhi
 
             struct OperationClasBuildParams
             {
-                // See D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC for accepted formats and how they are interpreted
+                // One of RG32_FLOAT, RGB32_FLOAT, RG16_FLOAT, RG16_UNORM, RG16_SNORM, RG8_UNORM, RG8_SNORM
+                // or R10G10B10A2_UNORM. Two-component formats take 0 for Z.
                 Format vertexFormat = Format::RGB32_FLOAT;
 
                 // Index of the last geometry in a single CLAS
@@ -1924,6 +1925,15 @@ namespace nvrhi
 
                 // Minimum number of bits to be truncated in vertex positions across all CLAS (in the current cluster operation)
                 uint32_t minPositionTruncateBitCount = 0;
+
+                // Maximum number of opacity micromaps referenced by a single CLAS. Must be non-zero
+                // when OperationFlags::AllowOMM is set. Only DXR clusters reads it.
+                uint32_t maxOpacityMicromapIndexCount = 0;
+
+                // Index format of every argument's index buffer. Only DXR clusters reads it: NVAPI and
+                // Vulkan take indexFormat from each argument, so a DXR clusters operation cannot mix
+                // index formats across arguments.
+                OperationIndexFormat indexFormat = OperationIndexFormat::IndexFormat32bit;
             };
 
             struct OperationBlasBuildParams
@@ -1959,7 +1969,7 @@ namespace nvrhi
                 // Input Resources
                 IBuffer* inIndirectArgCountBuffer = nullptr;            // Buffer containing the number of AS to build, instantiate, or move
                 uint64_t inIndirectArgCountOffsetInBytes = 0;           // Offset (in bytes) to where the count is in the inIndirectArgCountBuffer 
-                IBuffer* inIndirectArgsBuffer = nullptr;                // Buffer of descriptor array of format IndirectTriangleClasArgs, IndirectTriangleTemplateArgs, IndirectInstantiateTemplateArgs
+                IBuffer* inIndirectArgsBuffer = nullptr;                // Buffer of descriptor array of format IndirectTriangleClasArgs, IndirectTriangleTemplateArgs, IndirectInstantiateTemplateArgs (nv:: or dxr:: layout, per device)
                 uint64_t inIndirectArgsOffsetInBytes = 0;               // Offset (in bytes) to where the descriptor array starts inIndirectArgsBuffer
 
                 // In/Out Resources
@@ -2942,6 +2952,8 @@ namespace nvrhi
             uint32_t maxRecursionDepth = 1;
             int32_t hlslExtensionsUAV = -1;
             bool allowOpacityMicromaps = false;
+            // Required to trace against cluster BLAS. Leave off otherwise: it can slow down traversal.
+            bool allowClusters = false;
 
             PipelineDesc& addShader(const PipelineShaderDesc& value) { shaders.push_back(value); return *this; }
             PipelineDesc& addHitGroup(const PipelineHitGroupDesc& value) { hitGroups.push_back(value); return *this; }
@@ -2951,6 +2963,7 @@ namespace nvrhi
             PipelineDesc& setMaxRecursionDepth(uint32_t value) { maxRecursionDepth = value; return *this; }
             PipelineDesc& setHlslExtensionsUAV(int32_t value) { hlslExtensionsUAV = value; return *this; }
             PipelineDesc& setAllowOpacityMicromaps(bool value) { allowOpacityMicromaps = value; return *this; }
+            PipelineDesc& setAllowClusters(bool value) { allowClusters = value; return *this; }
         };
 
         class IPipeline;
