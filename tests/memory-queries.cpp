@@ -2,7 +2,9 @@
 #include <nvrhi/nvrhi.h>
 #include <nvrhi/validation.h>
 #include <cstdio>
+#include <cstring>
 #include <cinttypes>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -29,6 +31,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #else
 #include <dlfcn.h>
 #endif
+static PFN_vkGetAccelerationStructureBuildSizesKHR g_vkGetAccelerationStructureBuildSizesKHR = nullptr;
 #endif
 
 static void check(bool value, const char* message)
@@ -155,28 +158,55 @@ static void runQueries(nvrhi::IDevice* device)
     desc.topLevelMaxInstances = 8;
     desc.buildFlags = nvrhi::rt::AccelStructBuildFlags::AllowUpdate;
     nvrhi::rt::AccelStructPrebuildInfo info{123, 456, 789};
-    const bool prebuildSupported = device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D12 &&
+    const bool prebuildSupported = device->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11 &&
         device->queryFeatureSupport(nvrhi::Feature::RayTracingAccelStruct);
     if (prebuildSupported)
     {
         check(device->queryTopLevelAccelStructPrebuildInfo(desc, 4, info), "prebuild capability");
         check(info.resultBytes > 0 && info.scratchBytes > 0, "prebuild bytes");
 #if TEST_D3D12
-        ID3D12Device* native = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
-        Microsoft::WRL::ComPtr<ID3D12Device5> native5;
-        check(SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(&native5))), "native ray tracing device");
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
-        inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-        inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-        inputs.NumDescs = 4;
-        inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
-        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO expected = {};
-        native5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &expected);
-        check(info.resultBytes == expected.ResultDataMaxSizeInBytes && info.scratchBytes == expected.ScratchDataSizeInBytes &&
-            info.updateScratchBytes == expected.UpdateScratchDataSizeInBytes, "prebuild vs native D3D12");
-        std::printf("TLAS count=4 capacity=8: result=%" PRIu64 " scratch=%" PRIu64 " update=%" PRIu64 " native=(%" PRIu64 ",%" PRIu64 ",%" PRIu64 ")\n",
-            info.resultBytes, info.scratchBytes, info.updateScratchBytes,
-            expected.ResultDataMaxSizeInBytes, expected.ScratchDataSizeInBytes, expected.UpdateScratchDataSizeInBytes);
+        if (device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D12)
+        {
+            ID3D12Device* native = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+            Microsoft::WRL::ComPtr<ID3D12Device5> native5;
+            check(SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(&native5))), "native ray tracing device");
+            D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+            inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+            inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+            inputs.NumDescs = 4;
+            inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
+            D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO expected = {};
+            native5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &expected);
+            check(info.resultBytes == expected.ResultDataMaxSizeInBytes && info.scratchBytes == expected.ScratchDataSizeInBytes &&
+                info.updateScratchBytes == expected.UpdateScratchDataSizeInBytes, "prebuild vs native D3D12");
+            std::printf("TLAS count=4 capacity=8: result=%" PRIu64 " scratch=%" PRIu64 " update=%" PRIu64 " native=(%" PRIu64 ",%" PRIu64 ",%" PRIu64 ")\n",
+                info.resultBytes, info.scratchBytes, info.updateScratchBytes,
+                expected.ResultDataMaxSizeInBytes, expected.ScratchDataSizeInBytes, expected.UpdateScratchDataSizeInBytes);
+        }
+#endif
+#if TEST_VULKAN
+        if (device->getGraphicsAPI() == nvrhi::GraphicsAPI::VULKAN)
+        {
+            check(g_vkGetAccelerationStructureBuildSizesKHR != nullptr, "native Vulkan build sizes entry point");
+            VkDevice native = device->getNativeObject(nvrhi::ObjectTypes::VK_Device);
+            VkAccelerationStructureGeometryKHR geometry{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+            geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+            geometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+            VkAccelerationStructureBuildGeometryInfoKHR buildInfo{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
+            buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+            buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+            buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+            buildInfo.geometryCount = 1;
+            buildInfo.pGeometries = &geometry;
+            const uint32_t count = 4;
+            VkAccelerationStructureBuildSizesInfoKHR expected{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
+            g_vkGetAccelerationStructureBuildSizesKHR(native, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &buildInfo, &count, &expected);
+            check(info.resultBytes == expected.accelerationStructureSize && info.scratchBytes == expected.buildScratchSize &&
+                info.updateScratchBytes == expected.updateScratchSize, "prebuild vs native Vulkan");
+            std::printf("TLAS count=4 capacity=8: result=%" PRIu64 " scratch=%" PRIu64 " update=%" PRIu64 " native=(%" PRIu64 ",%" PRIu64 ",%" PRIu64 ")\n",
+                info.resultBytes, info.scratchBytes, info.updateScratchBytes,
+                uint64_t(expected.accelerationStructureSize), uint64_t(expected.buildScratchSize), uint64_t(expected.updateScratchSize));
+        }
 #endif
         const auto original = info;
         desc.buildFlags = desc.buildFlags | nvrhi::rt::AccelStructBuildFlags::AllowEmptyInstances;
@@ -300,6 +330,8 @@ int main(int argc, char** argv)
             LOAD_VK(vkGetPhysicalDeviceQueueFamilyProperties);
             LOAD_VK(vkCreateDevice);
             LOAD_VK(vkGetDeviceQueue);
+            LOAD_VK(vkGetDeviceProcAddr);
+            LOAD_VK(vkEnumerateDeviceExtensionProperties);
             LOAD_VK(vkDestroyDevice);
             LOAD_VK(vkDestroyInstance);
 #undef LOAD_VK
@@ -319,21 +351,47 @@ int main(int argc, char** argv)
             uint32_t family = 0;
             while (family < count && !(families[family].queueFlags & VK_QUEUE_GRAPHICS_BIT)) ++family;
             check(family < count, "Vulkan graphics queue family");
+            uint32_t extensionCount = 0;
+            check(vkEnumerateDeviceExtensionProperties(physical[0], nullptr, &extensionCount, nullptr) == VK_SUCCESS, "Vulkan extension count");
+            std::vector<VkExtensionProperties> available(extensionCount);
+            check(vkEnumerateDeviceExtensionProperties(physical[0], nullptr, &extensionCount, available.data()) == VK_SUCCESS, "Vulkan extensions");
+            const char* rayTracingExtensions[] = {
+                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+                VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME};
+            std::vector<const char*> enabledExtensions;
+            for (const char* name : rayTracingExtensions)
+                for (const auto& extension : available)
+                    if (std::strcmp(extension.extensionName, name) == 0) { enabledExtensions.push_back(name); break; }
+            const bool rayTracing = enabledExtensions.size() == std::size(rayTracingExtensions);
+            if (!rayTracing) enabledExtensions.clear();
+            std::printf("Vulkan ray tracing extensions: %s\n", rayTracing ? "enabled" : "unavailable");
             float priority = 1.f;
             VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
             queueInfo.queueFamilyIndex = family;
             queueInfo.queueCount = 1;
             queueInfo.pQueuePriorities = &priority;
+            VkPhysicalDeviceAccelerationStructureFeaturesKHR accelFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+            accelFeatures.accelerationStructure = VK_TRUE;
             VkPhysicalDeviceVulkan12Features features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+            features.pNext = rayTracing ? &accelFeatures : nullptr;
             features.timelineSemaphore = VK_TRUE;
+            features.bufferDeviceAddress = rayTracing ? VK_TRUE : VK_FALSE;
             VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
             deviceInfo.pNext = &features;
             deviceInfo.queueCreateInfoCount = 1;
             deviceInfo.pQueueCreateInfos = &queueInfo;
+            deviceInfo.enabledExtensionCount = uint32_t(enabledExtensions.size());
+            deviceInfo.ppEnabledExtensionNames = enabledExtensions.data();
             VkDevice native;
             check(vkCreateDevice(physical[0], &deviceInfo, nullptr, &native) == VK_SUCCESS, "Vulkan device");
+            if (rayTracing)
+                g_vkGetAccelerationStructureBuildSizesKHR = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
+                    vkGetDeviceProcAddr(native, "vkGetAccelerationStructureBuildSizesKHR"));
             nvrhi::vulkan::DeviceDesc desc{};
             desc.instance = instance;
+            desc.deviceExtensions = enabledExtensions.data();
+            desc.numDeviceExtensions = enabledExtensions.size();
             desc.physicalDevice = physical[0];
             desc.device = native;
             desc.graphicsQueueIndex = int(family);

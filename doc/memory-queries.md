@@ -22,9 +22,9 @@ shared heaps and externally managed pools at the owning application's level.
 
 `IDevice::queryTopLevelAccelStructPrebuildInfo(desc, instanceCount, info)` queries TLAS result,
 build-scratch and update-scratch requirements without allocating or submitting work. The
-intended build count must not exceed `desc.topLevelMaxInstances`. D3D12 supports this when ray
-tracing is available; otherwise it is unsupported and returns `false` after a debug assert,
-as on Vulkan and D3D11. Non-TLAS descriptors, over-capacity counts and unsupported queries return
+intended build count must not exceed `desc.topLevelMaxInstances`. D3D12 and Vulkan support this
+when ray tracing is available; otherwise it is unsupported and returns `false` after a debug
+assert, as on D3D11. Non-TLAS descriptors, over-capacity counts and unsupported queries return
 `false` without changing the output. Scratch requirements are build requests, not the size of
 NVRHI's internal scratch pool.
 
