@@ -429,6 +429,33 @@ namespace nvrhi::vulkan
         return rt::AccelStructHandle::Create(as);
     }
 
+    bool Device::queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements)
+    {
+        IBuffer* buffer = dynamic_cast<Buffer*>(resource);
+        if (auto as = dynamic_cast<AccelStruct*>(resource))
+            buffer = as->dataBuffer;
+        else if (auto omm = dynamic_cast<OpacityMicromap*>(resource))
+            buffer = omm->dataBuffer;
+
+        if (!buffer)
+            return false;
+
+        const MemoryRequirements requirements = getBufferMemoryRequirements(buffer);
+        if (requirements.size == 0 || requirements.size == UINT64_MAX)
+            return false;
+
+        outRequirements = requirements;
+        return true;
+    }
+
+    bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc&,
+        uint32_t, rt::AccelStructPrebuildInfo&)
+    {
+        m_Context.messageCallback->message(MessageSeverity::Info,
+            "queryTopLevelAccelStructPrebuildInfo: not implemented on Vulkan.");
+        return false;
+    }
+
     MemoryRequirements Device::getAccelStructMemoryRequirements(rt::IAccelStruct* _as)
     {
         AccelStruct* as = checked_cast<AccelStruct*>(_as);

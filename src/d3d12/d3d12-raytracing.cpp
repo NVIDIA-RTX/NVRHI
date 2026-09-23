@@ -936,6 +936,54 @@ namespace nvrhi::d3d12
         return rt::AccelStructHandle::Create(as);
     }
 
+    bool Device::queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements)
+    {
+        Buffer* buffer = dynamic_cast<Buffer*>(resource);
+        if (auto as = dynamic_cast<AccelStruct*>(resource))
+            buffer = as->dataBuffer;
+        else if (auto omm = dynamic_cast<OpacityMicromap*>(resource))
+            buffer = omm->dataBuffer;
+
+        if (!buffer)
+            return false;
+
+        const MemoryRequirements requirements = getBufferMemoryRequirements(buffer);
+        if (requirements.size == 0 || requirements.size == UINT64_MAX)
+            return false;
+
+        outRequirements = requirements;
+        return true;
+    }
+
+    bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
+        uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo)
+    {
+        if (!m_RayTracingSupported || !m_Context.device5)
+        {
+            m_Context.messageCallback->message(MessageSeverity::Info,
+                "queryTopLevelAccelStructPrebuildInfo: ray tracing is unavailable on this D3D12 device.");
+            return false;
+        }
+        if (!desc.isTopLevel || instanceCount > desc.topLevelMaxInstances)
+            return false;
+
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+        inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+        inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+        inputs.NumDescs = instanceCount;
+        inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS(
+            desc.buildFlags & ~rt::AccelStructBuildFlags::AllowEmptyInstances);
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+        m_Context.device5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+        if (info.ResultDataMaxSizeInBytes == 0)
+            return false;
+
+        outInfo.resultBytes = info.ResultDataMaxSizeInBytes;
+        outInfo.scratchBytes = info.ScratchDataSizeInBytes;
+        outInfo.updateScratchBytes = info.UpdateScratchDataSizeInBytes;
+        return true;
+    }
+
     MemoryRequirements Device::getAccelStructMemoryRequirements(rt::IAccelStruct* _as)
     {
         AccelStruct* as = checked_cast<AccelStruct*>(_as);

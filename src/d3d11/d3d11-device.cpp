@@ -316,6 +316,20 @@ namespace nvrhi::d3d11
         return nullptr;
     }
 
+    bool Device::queryResourceMemoryRequirements(IResource*, MemoryRequirements&)
+    {
+        // D3D11 does not expose allocation requirements; do not call the unsupported legacy query.
+        return false;
+    }
+
+    bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc&,
+        uint32_t, rt::AccelStructPrebuildInfo&)
+    {
+        m_Context.messageCallback->message(MessageSeverity::Info,
+            "queryTopLevelAccelStructPrebuildInfo: ray tracing is unavailable on D3D11.");
+        return false;
+    }
+
     MemoryRequirements Device::getAccelStructMemoryRequirements(rt::IAccelStruct*)
     {
         utils::NotSupported();

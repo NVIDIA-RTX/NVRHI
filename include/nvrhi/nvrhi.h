@@ -1801,6 +1801,13 @@ namespace nvrhi
 
         NVRHI_ENUM_CLASS_FLAG_OPERATORS(AccelStructBuildFlags)
 
+        struct AccelStructPrebuildInfo
+        {
+            uint64_t resultBytes = 0;
+            uint64_t scratchBytes = 0;
+            uint64_t updateScratchBytes = 0;
+        };
+
         struct AccelStructDesc
         {
             size_t topLevelMaxInstances = 0; // only applies when isTopLevel = true
@@ -3792,6 +3799,19 @@ namespace nvrhi
     {
     public:
         virtual HeapHandle createHeap(const HeapDesc& d) = 0;
+
+        // Safe optional query for buffers, acceleration structures and opacity micromaps.
+        // Returns false without modifying outRequirements for null/unsupported resources or backends
+        // (including D3D11). Resources must belong to this device. Sizes are backing-buffer memory
+        // requirements, not resident bytes or unique heap allocations; shared heaps need separate accounting.
+        virtual bool queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements) = 0;
+
+        // Queries TLAS build requirements without allocating. instanceCount is the intended build count,
+        // at most desc.topLevelMaxInstances. Scratch sizes are requests, not resident pool allocations.
+        // Returns false without modifying outInfo for unsupported backends/features or invalid descriptors.
+        // Currently implemented on D3D12 only; unsupported backends emit an informational diagnostic.
+        virtual bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
+            uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo) = 0;
 
         virtual TextureHandle createTexture(const TextureDesc& d) = 0;
         virtual MemoryRequirements getTextureMemoryRequirements(ITexture* texture) = 0;
