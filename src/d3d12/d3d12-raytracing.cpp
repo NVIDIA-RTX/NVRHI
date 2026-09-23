@@ -936,23 +936,14 @@ namespace nvrhi::d3d12
         return rt::AccelStructHandle::Create(as);
     }
 
-    bool Device::queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements)
+    bool AccelStruct::queryMemoryRequirements(MemoryRequirements& outRequirements)
     {
-        Buffer* buffer = dynamic_cast<Buffer*>(resource);
-        if (auto as = dynamic_cast<AccelStruct*>(resource))
-            buffer = as->dataBuffer;
-        else if (auto omm = dynamic_cast<OpacityMicromap*>(resource))
-            buffer = omm->dataBuffer;
+        return dataBuffer && dataBuffer->queryMemoryRequirements(outRequirements);
+    }
 
-        if (!buffer || buffer->desc.isVolatile)
-            return false;
-
-        const MemoryRequirements requirements = getBufferMemoryRequirements(buffer);
-        if (requirements.size == 0 || requirements.size == UINT64_MAX)
-            return false;
-
-        outRequirements = requirements;
-        return true;
+    bool OpacityMicromap::queryMemoryRequirements(MemoryRequirements& outRequirements)
+    {
+        return dataBuffer && dataBuffer->queryMemoryRequirements(outRequirements);
     }
 
     bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,

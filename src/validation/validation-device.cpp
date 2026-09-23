@@ -1989,13 +1989,6 @@ namespace nvrhi::validation
         return rt::AccelStructHandle::Create(wrapper);
     }
 
-    bool DeviceWrapper::queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements)
-    {
-        if (auto wrapper = dynamic_cast<AccelStructWrapper*>(resource))
-            resource = wrapper->getUnderlyingObject();
-        return m_Device->queryResourceMemoryRequirements(resource, outRequirements);
-    }
-
     bool DeviceWrapper::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
         uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo)
     {

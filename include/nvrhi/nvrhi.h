@@ -3800,10 +3800,6 @@ namespace nvrhi
     public:
         virtual HeapHandle createHeap(const HeapDesc& d) = 0;
 
-        // Optional resource memory query. See doc/memory-queries.md for the contract,
-        // backend limitations and application-level accounting requirements.
-        virtual bool queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements) = 0;
-
         // Optional TLAS prebuild query. See doc/memory-queries.md for the contract
         // and backend limitations.
         virtual bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,

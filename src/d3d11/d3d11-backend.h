@@ -465,7 +465,6 @@ namespace nvrhi::d3d11
         void *mapBuffer(IBuffer* b, CpuAccessMode mapFlags) override;
         void unmapBuffer(IBuffer* b) override;
         MemoryRequirements getBufferMemoryRequirements(IBuffer* buffer) override;
-        bool queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements) override;
         bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
             uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo) override;
         bool bindBufferMemory(IBuffer* buffer, IHeap* heap, uint64_t offset) override;

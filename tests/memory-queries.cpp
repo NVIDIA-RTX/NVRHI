@@ -73,7 +73,7 @@ static void runD3D12BufferQueries(nvrhi::IDevice* device)
         check(expected.SizeInBytes >= size && expected.SizeInBytes != UINT64_MAX && expected.Alignment > 0,
             "valid native buffer requirements");
         nvrhi::MemoryRequirements requirements{123, 456};
-        check(device->queryResourceMemoryRequirements(buffer, requirements), "imported buffer query available");
+        check(buffer->queryMemoryRequirements(requirements), "imported buffer query available");
         check(requirements.size == expected.SizeInBytes && requirements.alignment == expected.Alignment,
             "imported buffer requirements match native allocation");
         std::printf("Imported D3D12 buffer: bytes=%" PRIu64 " requirements=(%" PRIu64 ",%" PRIu64 ") native=(%" PRIu64 ",%" PRIu64 ")\n",
@@ -84,7 +84,7 @@ static void runD3D12BufferQueries(nvrhi::IDevice* device)
         .setIsConstantBuffer(true).setIsVolatile(true).setMaxVersions(4));
     check(buffer != nullptr, "volatile constant buffer");
     nvrhi::MemoryRequirements requirements{123, 456};
-    check(!device->queryResourceMemoryRequirements(buffer, requirements), "volatile buffer query unavailable");
+    check(!buffer->queryMemoryRequirements(requirements), "volatile buffer query unavailable");
     check(requirements.size == 123 && requirements.alignment == 456, "volatile buffer preserves unavailable output");
     std::printf("Volatile D3D12 constant: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
         requirements.size, requirements.alignment);
@@ -94,18 +94,20 @@ static void runD3D12BufferQueries(nvrhi::IDevice* device)
 static void runQueries(nvrhi::IDevice* device, Messages& messages)
 {
     nvrhi::MemoryRequirements requirements{123, 456};
-    check(!device->queryResourceMemoryRequirements(nullptr, requirements), "null resource is unavailable");
-    check(requirements.size == 123 && requirements.alignment == 456, "null query preserves output");
-    check(!device->queryResourceMemoryRequirements(device, requirements), "unsupported resource is unavailable");
+    auto resource = nvrhi::ResourceHandle::Create(new nvrhi::RefCounter<nvrhi::IResource>());
+    check(!resource->queryMemoryRequirements(requirements), "default resource query is unavailable");
+    check(requirements.size == 123 && requirements.alignment == 456, "default query preserves output");
+    check(!device->queryMemoryRequirements(requirements), "non-memory resource is unavailable");
     check(requirements.size == 123 && requirements.alignment == 456, "unsupported resource preserves output");
-    std::printf("Null and unsupported resource: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
+    std::printf("Default and non-memory resource: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
         requirements.size, requirements.alignment);
     const bool supported = device->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11;
     for (uint64_t size : {1024ull, 131072ull})
     {
         auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(size));
         check(buffer != nullptr, "create buffer");
-        check(device->queryResourceMemoryRequirements(buffer, requirements) == supported, "buffer query capability");
+        nvrhi::IResource* base = buffer;
+        check(base->queryMemoryRequirements(requirements) == supported, "buffer query via IResource dispatch");
         if (supported)
         {
             auto legacy = device->getBufferMemoryRequirements(buffer);
@@ -120,6 +122,34 @@ static void runQueries(nvrhi::IDevice* device, Messages& messages)
             std::printf("D3D11 buffer: bytes=%" PRIu64 " unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
                 size, requirements.size, requirements.alignment);
         }
+    }
+
+    if (supported)
+    {
+        auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(131072).setIsVirtual(true));
+        check(buffer && buffer->queryMemoryRequirements(requirements), "unbound virtual buffer query");
+        const auto unbound = requirements;
+        auto heap = device->createHeap(nvrhi::HeapDesc().setCapacity(requirements.size)
+            .setType(nvrhi::HeapType::DeviceLocal));
+        check(heap && device->bindBufferMemory(buffer, heap, 0), "bind virtual buffer");
+        check(buffer->queryMemoryRequirements(requirements) && requirements.size == unbound.size &&
+            requirements.alignment == unbound.alignment, "binding preserves virtual buffer requirements");
+        std::printf("Virtual buffer: unbound and bound requirements match\n");
+    }
+
+    if (device->getGraphicsAPI() == nvrhi::GraphicsAPI::VULKAN)
+    {
+        auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(256)
+            .setIsConstantBuffer(true).setIsVolatile(true).setMaxVersions(4));
+        check(buffer && buffer->queryMemoryRequirements(requirements), "Vulkan volatile buffer query");
+        const auto legacy = device->getBufferMemoryRequirements(buffer);
+        check(requirements.size >= 256 * 4 && requirements.size == legacy.size &&
+            requirements.alignment == legacy.alignment, "Vulkan volatile multiversion backing storage");
+        auto imported = device->createHandleForNativeBuffer(nvrhi::ObjectTypes::VK_Buffer,
+            buffer->getNativeObject(nvrhi::ObjectTypes::VK_Buffer), buffer->getDesc());
+        check(imported && imported->queryMemoryRequirements(requirements) && requirements.size == legacy.size &&
+            requirements.alignment == legacy.alignment, "Vulkan imported backing requirements");
+        std::printf("Vulkan volatile/imported buffer: multiversion requirements match\n");
     }
 
 #if TEST_D3D12
@@ -162,7 +192,7 @@ static void runQueries(nvrhi::IDevice* device, Messages& messages)
             info.scratchBytes == original.scratchBytes, "NVRHI-only build flag masked");
         desc.buildFlags = nvrhi::rt::AccelStructBuildFlags::AllowUpdate;
         auto as = device->createAccelStruct(desc);
-        check(as && device->queryResourceMemoryRequirements(as, requirements), "AS query (including validation wrapper)");
+        check(as && as->queryMemoryRequirements(requirements), "AS query (including validation wrapper)");
         check(requirements.size >= info.resultBytes, "AS backing allocation");
         std::printf("TLAS backing requirements=(%" PRIu64 ",%" PRIu64 "); AllowEmptyInstances preserves prebuild sizes\n",
             requirements.size, requirements.alignment);

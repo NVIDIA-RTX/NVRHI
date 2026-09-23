@@ -346,17 +346,20 @@ namespace nvrhi::d3d12
         uint64_t lastUseFenceValue = 0;
         HANDLE sharedHandle = nullptr;
 
-        Buffer(const Context& context, DeviceResources& resources, BufferDesc desc)
+        Buffer(const Context& context, DeviceResources& resources, BufferDesc desc, bool enhancedBarriersSupported)
             : BufferStateExtension(this->desc)
             , desc(std::move(desc))
             , m_Context(context)
             , m_Resources(resources)
+            , m_EnhancedBarriersSupported(enhancedBarriersSupported)
         { }
 
         ~Buffer() override;
         
         const BufferDesc& getDesc() const override { return desc; }
         GpuVirtualAddress getGpuVirtualAddress() const override { return gpuVA; }
+        bool queryMemoryRequirements(MemoryRequirements& outRequirements) override;
+        MemoryRequirements getMemoryRequirements() const;
 
         Object getNativeObject(ObjectType objectType) override;
 
@@ -372,6 +375,7 @@ namespace nvrhi::d3d12
         const Context& m_Context;
         DeviceResources& m_Resources;
         DescriptorIndex m_ClearUAV = c_InvalidDescriptorIndex;
+        const bool m_EnhancedBarriersSupported;
     };
 
     class StagingTexture : public RefCounter<IStagingTexture>
@@ -791,6 +795,7 @@ namespace nvrhi::d3d12
         Object getNativeObject(ObjectType objectType) override;
 
         const rt::OpacityMicromapDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements& outRequirements) override;
         bool isCompacted() const override { return compacted; }
         uint64_t getDeviceAddress() const override;
     };
@@ -820,6 +825,7 @@ namespace nvrhi::d3d12
         Object getNativeObject(ObjectType objectType) override;
 
         const rt::AccelStructDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements& outRequirements) override;
         bool isCompacted() const override { return compacted; }
         uint64_t getDeviceAddress() const override;
         
@@ -1238,7 +1244,6 @@ namespace nvrhi::d3d12
         void *mapBuffer(IBuffer* b, CpuAccessMode mapFlags) override;
         void unmapBuffer(IBuffer* b) override;
         MemoryRequirements getBufferMemoryRequirements(IBuffer* buffer) override;
-        bool queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements) override;
         bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
             uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo) override;
         bool bindBufferMemory(IBuffer* buffer, IHeap* heap, uint64_t offset) override;

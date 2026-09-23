@@ -586,6 +586,8 @@ namespace nvrhi::vulkan
         ~Buffer() override;
         const BufferDesc& getDesc() const override { return desc; }
         GpuVirtualAddress getGpuVirtualAddress() const override { return deviceAddress; }
+        bool queryMemoryRequirements(MemoryRequirements& outRequirements) override;
+        MemoryRequirements getMemoryRequirements() const;
         Object getNativeObject(ObjectType type) override;
 
     private:
@@ -1054,6 +1056,7 @@ namespace nvrhi::vulkan
 
         Object getNativeObject(ObjectType objectType) override;
         const rt::AccelStructDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements& outRequirements) override;
         bool isCompacted() const override { return compacted; }
         uint64_t getDeviceAddress() const override;
 
@@ -1077,6 +1080,7 @@ namespace nvrhi::vulkan
 
         Object getNativeObject(ObjectType objectType) override;
         const rt::OpacityMicromapDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements& outRequirements) override;
         bool isCompacted() const override { return compacted; }
         uint64_t getDeviceAddress() const override;
     };
@@ -1121,7 +1125,6 @@ namespace nvrhi::vulkan
         void *mapBuffer(IBuffer* b, CpuAccessMode mapFlags) override;
         void unmapBuffer(IBuffer* b) override;
         MemoryRequirements getBufferMemoryRequirements(IBuffer* buffer) override;
-        bool queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements) override;
         bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
             uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo) override;
         bool bindBufferMemory(IBuffer* buffer, IHeap* heap, uint64_t offset) override;
