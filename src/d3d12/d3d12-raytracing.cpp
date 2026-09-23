@@ -944,7 +944,7 @@ namespace nvrhi::d3d12
         else if (auto omm = dynamic_cast<OpacityMicromap*>(resource))
             buffer = omm->dataBuffer;
 
-        if (!buffer)
+        if (!buffer || buffer->desc.isVolatile)
             return false;
 
         const MemoryRequirements requirements = getBufferMemoryRequirements(buffer);

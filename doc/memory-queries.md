@@ -5,7 +5,10 @@ memory requirements for buffers, acceleration structures and opacity micromaps. 
 on D3D12 and Vulkan, including through the validation layer. D3D11 returns `false` without
 calling its unsupported legacy `getBufferMemoryRequirements` method. Null resources,
 unsupported resource types, and acceleration structures without an exposed backing buffer
-also return `false`. The output is unchanged on failure; do not interpret failure as zero.
+also return `false`. D3D12 volatile constant buffers return `false` because they use transient
+upload suballocations rather than a dedicated backing resource. Imported D3D12 buffers report
+the native resource's allocation requirements. The output is unchanged on failure; do not
+interpret failure as zero.
 
 Resources must belong to the queried device. The result describes the resource's current
 backing buffer, so repeat the query after replacing or compacting a resource. These are
@@ -30,5 +33,8 @@ D3D11 uses WARP; D3D12 uses the default adapter. The tests allocate small resour
 create windows or submit rendering work. Both raw and validation devices are exercised.
 
 Coverage includes unsupported-backend results, unchanged failure outputs, null/unsupported
-resources, buffer replacement sizes, TLAS capacity validation, validation-layer AS unwrapping,
-and native D3D12 prebuild equivalence. OMM compaction and GPU residency are not covered.
+resources, buffer replacement sizes, imported D3D12 buffer allocation equivalence, unavailable
+D3D12 volatile constant buffers, TLAS capacity validation, validation-layer AS unwrapping,
+and native D3D12 prebuild equivalence. D3D12 tests exercise both legacy and requested enhanced
+barriers, with native debug-layer error checks when the debug layer is installed. OMM
+compaction and GPU residency are not covered.

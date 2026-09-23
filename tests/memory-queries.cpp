@@ -7,6 +7,7 @@
 #include <vector>
 #if TEST_D3D12
 #include <nvrhi/d3d12.h>
+#include <d3d12sdklayers.h>
 #endif
 #if TEST_D3D11
 #include <nvrhi/d3d11.h>
@@ -45,6 +46,46 @@ struct Messages : nvrhi::IMessageCallback
     }
 };
 
+#if TEST_D3D12
+static void runD3D12BufferQueries(nvrhi::IDevice* device)
+{
+    ID3D12Device* native = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
+    for (uint64_t size : {1024ull, 131072ull})
+    {
+        D3D12_HEAP_PROPERTIES heap = {};
+        heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+        D3D12_RESOURCE_DESC desc = {};
+        desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        desc.Width = size;
+        desc.Height = 1;
+        desc.DepthOrArraySize = 1;
+        desc.MipLevels = 1;
+        desc.SampleDesc.Count = 1;
+        desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+        check(SUCCEEDED(native->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&resource))), "native buffer");
+        auto buffer = device->createHandleForNativeBuffer(nvrhi::ObjectTypes::D3D12_Resource,
+            resource.Get(), nvrhi::BufferDesc().setByteSize(size));
+        check(buffer != nullptr, "import native buffer");
+        const auto expected = native->GetResourceAllocationInfo(1, 1, &desc);
+        check(expected.SizeInBytes >= size && expected.SizeInBytes != UINT64_MAX && expected.Alignment > 0,
+            "valid native buffer requirements");
+        nvrhi::MemoryRequirements requirements{123, 456};
+        check(device->queryResourceMemoryRequirements(buffer, requirements), "imported buffer query available");
+        check(requirements.size == expected.SizeInBytes && requirements.alignment == expected.Alignment,
+            "imported buffer requirements match native allocation");
+    }
+
+    auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(256)
+        .setIsConstantBuffer(true).setIsVolatile(true).setMaxVersions(4));
+    check(buffer != nullptr, "volatile constant buffer");
+    nvrhi::MemoryRequirements requirements{123, 456};
+    check(!device->queryResourceMemoryRequirements(buffer, requirements), "volatile buffer query unavailable");
+    check(requirements.size == 123 && requirements.alignment == 456, "volatile buffer preserves unavailable output");
+}
+#endif
+
 static void runQueries(nvrhi::IDevice* device, Messages& messages)
 {
     nvrhi::MemoryRequirements requirements{123, 456};
@@ -67,6 +108,11 @@ static void runQueries(nvrhi::IDevice* device, Messages& messages)
         else
             check(requirements.size == 123 && requirements.alignment == 456, "D3D11 preserves unavailable output");
     }
+
+#if TEST_D3D12
+    if (device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D12)
+        runD3D12BufferQueries(device);
+#endif
 
     nvrhi::rt::AccelStructDesc desc;
     desc.isTopLevel = true;
@@ -153,6 +199,9 @@ int main(int argc, char** argv)
 #if TEST_D3D12
         if (backend == "d3d12")
         {
+            Microsoft::WRL::ComPtr<ID3D12Debug> debug;
+            if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
+                debug->EnableDebugLayer();
             Microsoft::WRL::ComPtr<ID3D12Device> native;
             check(SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&native))), "D3D12 device");
             Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
@@ -162,8 +211,27 @@ int main(int argc, char** argv)
             desc.pDevice = native.Get();
             desc.pGraphicsCommandQueue = queue.Get();
             desc.errorCB = &messages;
-            auto device = nvrhi::d3d12::createDevice(desc);
-            runDevice(device, messages);
+            for (bool enhancedBarriers : {false, true})
+            {
+                desc.enableEnhancedBarriers = enhancedBarriers;
+                auto device = nvrhi::d3d12::createDevice(desc);
+                runDevice(device, messages);
+            }
+            Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+            if (SUCCEEDED(native.As(&infoQueue)))
+            {
+                for (UINT64 i = 0; i < infoQueue->GetNumStoredMessages(); ++i)
+                {
+                    SIZE_T size = 0;
+                    check(SUCCEEDED(infoQueue->GetMessage(i, nullptr, &size)), "D3D12 message size");
+                    std::vector<uint8_t> storage(size);
+                    auto message = reinterpret_cast<D3D12_MESSAGE*>(storage.data());
+                    check(SUCCEEDED(infoQueue->GetMessage(i, message, &size)), "D3D12 message");
+                    if (message->Severity == D3D12_MESSAGE_SEVERITY_ERROR ||
+                        message->Severity == D3D12_MESSAGE_SEVERITY_CORRUPTION)
+                        throw std::runtime_error(message->pDescription);
+                }
+            }
         }
         else
 #endif

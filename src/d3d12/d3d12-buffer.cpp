@@ -403,6 +403,7 @@ namespace nvrhi::d3d12
 
         Buffer* buffer = new Buffer(m_Context, m_Resources, desc);
         buffer->resource = pResource;
+        *reinterpret_cast<D3D12_RESOURCE_DESC*>(&buffer->resourceDesc) = pResource->GetDesc();
         
         buffer->postCreate();
 
