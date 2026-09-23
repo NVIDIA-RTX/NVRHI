@@ -38,11 +38,10 @@ static void check(bool value, const char* message)
 
 struct Messages : nvrhi::IMessageCallback
 {
-    unsigned errors = 0, infos = 0;
+    unsigned errors = 0;
     void message(nvrhi::MessageSeverity severity, const char* text) override
     {
         if (severity == nvrhi::MessageSeverity::Error || severity == nvrhi::MessageSeverity::Fatal) ++errors;
-        if (severity == nvrhi::MessageSeverity::Info) ++infos;
         std::printf("NVRHI: %s\n", text);
     }
 };
@@ -91,7 +90,7 @@ static void runD3D12BufferQueries(nvrhi::IDevice* device)
 }
 #endif
 
-static void runQueries(nvrhi::IDevice* device, Messages& messages)
+static void runQueries(nvrhi::IDevice* device)
 {
     nvrhi::MemoryRequirements requirements{123, 456};
     auto resource = nvrhi::ResourceHandle::Create(new nvrhi::RefCounter<nvrhi::IResource>());
@@ -102,25 +101,19 @@ static void runQueries(nvrhi::IDevice* device, Messages& messages)
     std::printf("Default and non-memory resource: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
         requirements.size, requirements.alignment);
     const bool supported = device->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11;
-    for (uint64_t size : {1024ull, 131072ull})
+    if (supported)
     {
-        auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(size));
-        check(buffer != nullptr, "create buffer");
-        nvrhi::IResource* base = buffer;
-        check(base->queryMemoryRequirements(requirements) == supported, "buffer query via IResource dispatch");
-        if (supported)
+        for (uint64_t size : {1024ull, 131072ull})
         {
+            auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(size));
+            check(buffer != nullptr, "create buffer");
+            nvrhi::IResource* base = buffer;
+            check(base->queryMemoryRequirements(requirements), "buffer query via IResource dispatch");
             auto legacy = device->getBufferMemoryRequirements(buffer);
             check(requirements.size >= size && requirements.size == legacy.size &&
                 requirements.alignment == legacy.alignment, "backing-buffer requirements");
             std::printf("Buffer: bytes=%" PRIu64 " requirements=(%" PRIu64 ",%" PRIu64 ") legacy=(%" PRIu64 ",%" PRIu64 ")\n",
                 size, requirements.size, requirements.alignment, legacy.size, legacy.alignment);
-        }
-        else
-        {
-            check(requirements.size == 123 && requirements.alignment == 456, "D3D11 preserves unavailable output");
-            std::printf("D3D11 buffer: bytes=%" PRIu64 " unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
-                size, requirements.size, requirements.alignment);
         }
     }
 
@@ -164,10 +157,9 @@ static void runQueries(nvrhi::IDevice* device, Messages& messages)
     nvrhi::rt::AccelStructPrebuildInfo info{123, 456, 789};
     const bool prebuildSupported = device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D12 &&
         device->queryFeatureSupport(nvrhi::Feature::RayTracingAccelStruct);
-    const auto infosBefore = messages.infos;
-    check(device->queryTopLevelAccelStructPrebuildInfo(desc, 4, info) == prebuildSupported, "prebuild capability");
     if (prebuildSupported)
     {
+        check(device->queryTopLevelAccelStructPrebuildInfo(desc, 4, info), "prebuild capability");
         check(info.resultBytes > 0 && info.scratchBytes > 0, "prebuild bytes");
 #if TEST_D3D12
         ID3D12Device* native = device->getNativeObject(nvrhi::ObjectTypes::D3D12_Device);
@@ -196,34 +188,31 @@ static void runQueries(nvrhi::IDevice* device, Messages& messages)
         check(requirements.size >= info.resultBytes, "AS backing allocation");
         std::printf("TLAS backing requirements=(%" PRIu64 ",%" PRIu64 "); AllowEmptyInstances preserves prebuild sizes\n",
             requirements.size, requirements.alignment);
+        info = {123, 456, 789};
+        check(!device->queryTopLevelAccelStructPrebuildInfo(desc, 9, info), "instance count exceeds capacity");
+        check(info.resultBytes == 123 && info.scratchBytes == 456 && info.updateScratchBytes == 789,
+            "over-capacity prebuild preserves output");
+        desc.isTopLevel = false;
+        check(!device->queryTopLevelAccelStructPrebuildInfo(desc, 4, info), "BLAS is not TLAS");
+        check(info.resultBytes == 123 && info.scratchBytes == 456 && info.updateScratchBytes == 789, "invalid prebuild preserves output");
+        std::printf("TLAS count=9 capacity=8 and BLAS descriptor: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ",%" PRIu64 ")\n",
+            info.resultBytes, info.scratchBytes, info.updateScratchBytes);
     }
     else
     {
-        check(info.resultBytes == 123 && info.scratchBytes == 456 && info.updateScratchBytes == 789, "unsupported prebuild preserves output");
-        check(messages.infos > infosBefore, "unsupported prebuild emits diagnostic");
-        std::printf("TLAS prebuild: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ",%" PRIu64 "), diagnostic emitted\n",
-            info.resultBytes, info.scratchBytes, info.updateScratchBytes);
+        std::printf("TLAS prebuild: unsupported on this backend, skipped\n");
     }
-    info = {123, 456, 789};
-    check(!device->queryTopLevelAccelStructPrebuildInfo(desc, 9, info), "instance count exceeds capacity");
-    check(info.resultBytes == 123 && info.scratchBytes == 456 && info.updateScratchBytes == 789,
-        "over-capacity prebuild preserves output");
-    desc.isTopLevel = false;
-    check(!device->queryTopLevelAccelStructPrebuildInfo(desc, 4, info), "BLAS is not TLAS");
-    check(info.resultBytes == 123 && info.scratchBytes == 456 && info.updateScratchBytes == 789, "invalid prebuild preserves output");
-    std::printf("TLAS count=9 capacity=8 and BLAS descriptor: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ",%" PRIu64 ")\n",
-        info.resultBytes, info.scratchBytes, info.updateScratchBytes);
 }
 
 static void runDevice(nvrhi::IDevice* device, Messages& messages)
 {
     check(device != nullptr, "NVRHI device");
     std::printf("Device path: raw\n");
-    runQueries(device, messages);
+    runQueries(device);
 #if TEST_VALIDATION
     auto validation = nvrhi::validation::createValidationLayer(device);
     std::printf("Device path: validation\n");
-    runQueries(validation, messages);
+    runQueries(validation);
 #endif
     device->waitForIdle();
     device->runGarbageCollection();

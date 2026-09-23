@@ -442,8 +442,7 @@ namespace nvrhi::vulkan
     bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc&,
         uint32_t, rt::AccelStructPrebuildInfo&)
     {
-        m_Context.messageCallback->message(MessageSeverity::Info,
-            "queryTopLevelAccelStructPrebuildInfo: not implemented on Vulkan.");
+        utils::NotSupported();
         return false;
     }
 

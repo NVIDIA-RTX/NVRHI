@@ -319,8 +319,7 @@ namespace nvrhi::d3d11
     bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc&,
         uint32_t, rt::AccelStructPrebuildInfo&)
     {
-        m_Context.messageCallback->message(MessageSeverity::Info,
-            "queryTopLevelAccelStructPrebuildInfo: ray tracing is unavailable on D3D11.");
+        utils::NotSupported();
         return false;
     }
 

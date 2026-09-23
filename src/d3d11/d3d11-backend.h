@@ -81,6 +81,7 @@ namespace nvrhi::d3d11
 
         Texture(const Context& context) : m_Context(context) { }
         const TextureDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements&) override { utils::NotSupported(); return false; }
         Object getNativeObject(ObjectType objectType) override;
         Object getNativeView(ObjectType objectType, Format format, TextureSubresourceSet subresources, TextureDimension dimension, bool isReadOnlyDSV = false,
             std::optional<ComponentMapping> overrideComponentMapping = std::nullopt) override;
@@ -117,6 +118,7 @@ namespace nvrhi::d3d11
         
         Buffer(const Context& context) : m_Context(context) { }
         const BufferDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements&) override { utils::NotSupported(); return false; }
         GpuVirtualAddress getGpuVirtualAddress() const override { nvrhi::utils::NotImplemented(); return 0; }
         Object getNativeObject(ObjectType objectType) override;
 

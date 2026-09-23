@@ -308,6 +308,7 @@ namespace nvrhi::d3d12
         ~Texture() override;
 
         const TextureDesc& getDesc() const override { return desc; }
+        bool queryMemoryRequirements(MemoryRequirements&) override { utils::NotSupported(); return false; }
 
         Object getNativeObject(ObjectType objectType) override;
         Object getNativeView(ObjectType objectType, Format format, TextureSubresourceSet subresources, TextureDimension dimension, bool isReadOnlyDSV = false,

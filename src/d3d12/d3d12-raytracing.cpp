@@ -951,8 +951,7 @@ namespace nvrhi::d3d12
     {
         if (!m_RayTracingSupported || !m_Context.device5)
         {
-            m_Context.messageCallback->message(MessageSeverity::Info,
-                "queryTopLevelAccelStructPrebuildInfo: ray tracing is unavailable on this D3D12 device.");
+            utils::NotSupported();
             return false;
         }
         if (!desc.isTopLevel || instanceCount > desc.topLevelMaxInstances)

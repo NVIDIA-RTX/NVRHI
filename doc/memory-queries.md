@@ -3,9 +3,9 @@
 `IResource::queryMemoryRequirements(requirements)` optionally reports backing-buffer
 memory requirements for buffers, acceleration structures and opacity micromaps. It works
 on D3D12 and Vulkan, including through the validation layer. The default implementation
-returns `false` without modifying the output, including for textures, heaps, non-memory
-resources and D3D11; it never calls the unsupported legacy D3D11
-`getBufferMemoryRequirements` method.
+returns `false` without modifying the output for heaps and other non-memory resources.
+Textures on every backend, and all D3D11 resources, are unsupported: they return `false`
+and assert in debug builds through `utils::NotSupported`, like the legacy D3D11 getters.
 Acceleration structures without an exposed backing buffer also return `false`. Check for
 null before invoking the member. D3D12 volatile constant buffers return `false` because they use transient
 upload suballocations rather than a dedicated backing resource. Imported D3D12 buffers report
@@ -23,8 +23,8 @@ shared heaps and externally managed pools at the owning application's level.
 `IDevice::queryTopLevelAccelStructPrebuildInfo(desc, instanceCount, info)` queries TLAS result,
 build-scratch and update-scratch requirements without allocating or submitting work. The
 intended build count must not exceed `desc.topLevelMaxInstances`. D3D12 supports this when ray
-tracing is available; otherwise it returns `false` with an informational diagnostic, as do
-Vulkan and D3D11. Non-TLAS descriptors, over-capacity counts and unsupported queries return
+tracing is available; otherwise it is unsupported and returns `false` after a debug assert,
+as on Vulkan and D3D11. Non-TLAS descriptors, over-capacity counts and unsupported queries return
 `false` without changing the output. Scratch requirements are build requests, not the size of
 NVRHI's internal scratch pool.
 
