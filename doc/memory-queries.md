@@ -3,8 +3,9 @@
 `IResource::queryMemoryRequirements(requirements)` optionally reports backing-buffer
 memory requirements for buffers, acceleration structures and opacity micromaps. It works
 on D3D12 and Vulkan, including through the validation layer. The default implementation
-returns `false` without modifying the output, including for non-memory resources and D3D11;
-it never calls the unsupported legacy D3D11 `getBufferMemoryRequirements` method.
+returns `false` without modifying the output, including for textures, heaps, non-memory
+resources and D3D11; it never calls the unsupported legacy D3D11
+`getBufferMemoryRequirements` method.
 Acceleration structures without an exposed backing buffer also return `false`. Check for
 null before invoking the member. D3D12 volatile constant buffers return `false` because they use transient
 upload suballocations rather than a dedicated backing resource. Imported D3D12 buffers report
@@ -35,8 +36,8 @@ TLAS prebuild remains a device query because no resource exists yet.
 ## Regression tests
 
 Configure NVRHI with `-DNVRHI_BUILD_TESTS=ON -DNVRHI_INSTALL=OFF`, build, and run
-`ctest --test-dir <build> --output-on-failure -C Debug`. Each enabled backend gets a separate
-test with a 30-second timeout. A Vulkan loader and device are required for its runtime test.
+`ctest --test-dir <build> --output-on-failure -C Debug`. Backend test registration and timeouts are defined in
+[tests/CMakeLists.txt](../tests/CMakeLists.txt). A Vulkan loader and device are required for its runtime test.
 D3D11 uses WARP; D3D12 uses the default adapter. The tests allocate small resources but do not
 create windows or submit rendering work. Raw devices are always exercised; validation devices
 are also exercised when `NVRHI_WITH_VALIDATION` is enabled.
