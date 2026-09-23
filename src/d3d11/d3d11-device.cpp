@@ -316,6 +316,13 @@ namespace nvrhi::d3d11
         return nullptr;
     }
 
+    bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc&,
+        uint32_t, rt::AccelStructPrebuildInfo&)
+    {
+        utils::NotSupported();
+        return false;
+    }
+
     MemoryRequirements Device::getAccelStructMemoryRequirements(rt::IAccelStruct*)
     {
         utils::NotSupported();

@@ -321,6 +321,23 @@ namespace nvrhi::vulkan
         return rt::OpacityMicromapHandle::Create(om);
     }
 
+    static vk::AccelerationStructureBuildSizesInfoKHR getTopLevelBuildSizes(const VulkanContext& context,
+        rt::AccelStructBuildFlags buildFlags, uint32_t maxInstances)
+    {
+        auto geometry = vk::AccelerationStructureGeometryKHR()
+            .setGeometryType(vk::GeometryTypeKHR::eInstances);
+        geometry.geometry.setInstances(vk::AccelerationStructureGeometryInstancesDataKHR());
+
+        auto buildInfo = vk::AccelerationStructureBuildGeometryInfoKHR()
+            .setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+            .setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+            .setGeometries(geometry)
+            .setFlags(convertAccelStructBuildFlags(buildFlags));
+
+        return context.device.getAccelerationStructureBuildSizesKHR(
+            vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, maxInstances);
+    }
+
     rt::AccelStructHandle Device::createAccelStruct(const rt::AccelStructDesc& desc)
     {
         AccelStruct* as = new AccelStruct(m_Context);
@@ -335,30 +352,18 @@ namespace nvrhi::vulkan
 
         if (isManaged)
         {
-            std::vector<vk::AccelerationStructureGeometryKHR> geometries;
-            std::vector<vk::AccelerationStructureTrianglesOpacityMicromapEXT> omms;
-            std::vector<vk::AccelerationStructureGeometryLinearSweptSpheresDataNV> lss;
-            std::vector<uint32_t> maxPrimitiveCounts;
-
-            auto buildInfo = vk::AccelerationStructureBuildGeometryInfoKHR();
+            vk::AccelerationStructureBuildSizesInfoKHR buildSizes;
 
             if (desc.isTopLevel)
             {
-                geometries.push_back(vk::AccelerationStructureGeometryKHR()
-                    .setGeometryType(vk::GeometryTypeKHR::eInstances));
-
-                geometries[0].geometry.setInstances(vk::AccelerationStructureGeometryInstancesDataKHR());
-
-                maxPrimitiveCounts.push_back(uint32_t(desc.topLevelMaxInstances));
-
-                buildInfo.setType(vk::AccelerationStructureTypeKHR::eTopLevel);
+                buildSizes = getTopLevelBuildSizes(m_Context, desc.buildFlags, uint32_t(desc.topLevelMaxInstances));
             }
             else
             {
-                geometries.resize(desc.bottomLevelGeometries.size());
-                omms.resize(desc.bottomLevelGeometries.size());
-                lss.resize(desc.bottomLevelGeometries.size());
-                maxPrimitiveCounts.resize(desc.bottomLevelGeometries.size());
+                std::vector<vk::AccelerationStructureGeometryKHR> geometries(desc.bottomLevelGeometries.size());
+                std::vector<vk::AccelerationStructureTrianglesOpacityMicromapEXT> omms(desc.bottomLevelGeometries.size());
+                std::vector<vk::AccelerationStructureGeometryLinearSweptSpheresDataNV> lss(desc.bottomLevelGeometries.size());
+                std::vector<uint32_t> maxPrimitiveCounts(desc.bottomLevelGeometries.size());
 
                 for (size_t i = 0; i < desc.bottomLevelGeometries.size(); i++)
                 {
@@ -366,15 +371,15 @@ namespace nvrhi::vulkan
                         nullptr, m_Context, nullptr, 0);
                 }
 
-                buildInfo.setType(vk::AccelerationStructureTypeKHR::eBottomLevel);
+                auto buildInfo = vk::AccelerationStructureBuildGeometryInfoKHR()
+                    .setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+                    .setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+                    .setGeometries(geometries)
+                    .setFlags(convertAccelStructBuildFlags(desc.buildFlags));
+
+                buildSizes = m_Context.device.getAccelerationStructureBuildSizesKHR(
+                    vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, maxPrimitiveCounts);
             }
-
-            buildInfo.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-                .setGeometries(geometries)
-                .setFlags(convertAccelStructBuildFlags(desc.buildFlags));
-
-            auto buildSizes = m_Context.device.getAccelerationStructureBuildSizesKHR(
-                vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, maxPrimitiveCounts);
 
             BufferDesc bufferDesc;
             bufferDesc.byteSize = buildSizes.accelerationStructureSize;
@@ -427,6 +432,37 @@ namespace nvrhi::vulkan
         }
 
         return rt::AccelStructHandle::Create(as);
+    }
+
+    bool AccelStruct::queryMemoryRequirements(MemoryRequirements& outRequirements)
+    {
+        return dataBuffer && dataBuffer->queryMemoryRequirements(outRequirements);
+    }
+
+    bool OpacityMicromap::queryMemoryRequirements(MemoryRequirements& outRequirements)
+    {
+        return dataBuffer && dataBuffer->queryMemoryRequirements(outRequirements);
+    }
+
+    bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
+        uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo)
+    {
+        if (!m_Context.extensions.KHR_acceleration_structure)
+        {
+            utils::NotSupported();
+            return false;
+        }
+        if (!desc.isTopLevel || instanceCount > desc.topLevelMaxInstances)
+            return false;
+
+        const auto sizes = getTopLevelBuildSizes(m_Context, desc.buildFlags, instanceCount);
+        if (sizes.accelerationStructureSize == 0)
+            return false;
+
+        outInfo.resultBytes = sizes.accelerationStructureSize;
+        outInfo.scratchBytes = sizes.buildScratchSize;
+        outInfo.updateScratchBytes = sizes.updateScratchSize;
+        return true;
     }
 
     MemoryRequirements Device::getAccelStructMemoryRequirements(rt::IAccelStruct* _as)

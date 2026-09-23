@@ -30,6 +30,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CMakeDependentOption)
 
 option(NVRHI_BUILD_SHARED "Build NVRHI as a shared library (DLL or .so)" OFF)
+option(NVRHI_BUILD_TESTS "Build focused backend memory query tests" OFF)
 option(NVRHI_INSTALL "Generate install rules for NVRHI" ON)
 cmake_dependent_option(NVRHI_INSTALL_EXPORTS "Install CMake exports" OFF "NVRHI_INSTALL" OFF)
 
@@ -444,6 +445,11 @@ if (NVRHI_WITH_VULKAN)
     target_compile_definitions(${nvrhi_vulkan_target} PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WITH_AFTERMATH}>)
 endif()
 
+
+if(NVRHI_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 if (NVRHI_INSTALL)
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/nvrhi

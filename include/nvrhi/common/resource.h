@@ -102,6 +102,8 @@ namespace nvrhi
         template<typename T> operator T* () const { return static_cast<T*>(pointer); }
     };
 
+    struct MemoryRequirements;
+
     class IResource
     {
     protected:
@@ -117,6 +119,10 @@ namespace nvrhi
         // Does *not* AddRef the returned interface.
         virtual Object getNativeObject(ObjectType objectType) { (void)objectType; return nullptr; }
         
+        // Optional backing-memory query. Returns false without changing output when unavailable.
+        // See doc/memory-queries.md for supported resources and accounting limitations.
+        virtual bool queryMemoryRequirements(MemoryRequirements& outRequirements) { (void)outRequirements; return false; }
+
         // Non-copyable and non-movable
         IResource(const IResource&) = delete;
         IResource(const IResource&&) = delete;

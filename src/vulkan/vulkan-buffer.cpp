@@ -635,10 +635,23 @@ namespace nvrhi::vulkan
 
     MemoryRequirements Device::getBufferMemoryRequirements(IBuffer* _buffer)
     {
-        Buffer* buffer = checked_cast<Buffer*>(_buffer);
+        return checked_cast<Buffer*>(_buffer)->getMemoryRequirements();
+    }
 
+    bool Buffer::queryMemoryRequirements(MemoryRequirements& outRequirements)
+    {
+        const MemoryRequirements requirements = getMemoryRequirements();
+        if (requirements.size == 0 || requirements.size == UINT64_MAX)
+            return false;
+
+        outRequirements = requirements;
+        return true;
+    }
+
+    MemoryRequirements Buffer::getMemoryRequirements() const
+    {
         vk::MemoryRequirements vulkanMemReq;
-        m_Context.device.getBufferMemoryRequirements(buffer->buffer, &vulkanMemReq);
+        m_Context.device.getBufferMemoryRequirements(buffer, &vulkanMemReq);
 
         MemoryRequirements memReq;
         memReq.alignment = vulkanMemReq.alignment;

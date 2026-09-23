@@ -936,6 +936,44 @@ namespace nvrhi::d3d12
         return rt::AccelStructHandle::Create(as);
     }
 
+    bool AccelStruct::queryMemoryRequirements(MemoryRequirements& outRequirements)
+    {
+        return dataBuffer && dataBuffer->queryMemoryRequirements(outRequirements);
+    }
+
+    bool OpacityMicromap::queryMemoryRequirements(MemoryRequirements& outRequirements)
+    {
+        return dataBuffer && dataBuffer->queryMemoryRequirements(outRequirements);
+    }
+
+    bool Device::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
+        uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo)
+    {
+        if (!m_RayTracingSupported || !m_Context.device5)
+        {
+            utils::NotSupported();
+            return false;
+        }
+        if (!desc.isTopLevel || instanceCount > desc.topLevelMaxInstances)
+            return false;
+
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+        inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+        inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+        inputs.NumDescs = instanceCount;
+        inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS(
+            desc.buildFlags & ~rt::AccelStructBuildFlags::AllowEmptyInstances);
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+        m_Context.device5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+        if (info.ResultDataMaxSizeInBytes == 0)
+            return false;
+
+        outInfo.resultBytes = info.ResultDataMaxSizeInBytes;
+        outInfo.scratchBytes = info.ScratchDataSizeInBytes;
+        outInfo.updateScratchBytes = info.UpdateScratchDataSizeInBytes;
+        return true;
+    }
+
     MemoryRequirements Device::getAccelStructMemoryRequirements(rt::IAccelStruct* _as)
     {
         AccelStruct* as = checked_cast<AccelStruct*>(_as);

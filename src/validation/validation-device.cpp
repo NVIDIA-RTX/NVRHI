@@ -1989,6 +1989,12 @@ namespace nvrhi::validation
         return rt::AccelStructHandle::Create(wrapper);
     }
 
+    bool DeviceWrapper::queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
+        uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo)
+    {
+        return m_Device->queryTopLevelAccelStructPrebuildInfo(desc, instanceCount, outInfo);
+    }
+
     MemoryRequirements DeviceWrapper::getAccelStructMemoryRequirements(rt::IAccelStruct* as)
     {
         if (as == nullptr)

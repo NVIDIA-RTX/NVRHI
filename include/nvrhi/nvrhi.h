@@ -1801,6 +1801,13 @@ namespace nvrhi
 
         NVRHI_ENUM_CLASS_FLAG_OPERATORS(AccelStructBuildFlags)
 
+        struct AccelStructPrebuildInfo
+        {
+            uint64_t resultBytes = 0;
+            uint64_t scratchBytes = 0;
+            uint64_t updateScratchBytes = 0;
+        };
+
         struct AccelStructDesc
         {
             size_t topLevelMaxInstances = 0; // only applies when isTopLevel = true
@@ -3792,6 +3799,11 @@ namespace nvrhi
     {
     public:
         virtual HeapHandle createHeap(const HeapDesc& d) = 0;
+
+        // Optional TLAS prebuild query. See doc/memory-queries.md for the contract
+        // and backend limitations.
+        virtual bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
+            uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo) = 0;
 
         virtual TextureHandle createTexture(const TextureDesc& d) = 0;
         virtual MemoryRequirements getTextureMemoryRequirements(ITexture* texture) = 0;
