@@ -3800,16 +3800,12 @@ namespace nvrhi
     public:
         virtual HeapHandle createHeap(const HeapDesc& d) = 0;
 
-        // Safe optional query for buffers, acceleration structures and opacity micromaps.
-        // Returns false without modifying outRequirements for null/unsupported resources or backends
-        // (including D3D11). Resources must belong to this device. Sizes are backing-buffer memory
-        // requirements, not resident bytes or unique heap allocations; shared heaps need separate accounting.
+        // Optional resource memory query. See doc/memory-queries.md for the contract,
+        // backend limitations and application-level accounting requirements.
         virtual bool queryResourceMemoryRequirements(IResource* resource, MemoryRequirements& outRequirements) = 0;
 
-        // Queries TLAS build requirements without allocating. instanceCount is the intended build count,
-        // at most desc.topLevelMaxInstances. Scratch sizes are requests, not resident pool allocations.
-        // Returns false without modifying outInfo for unsupported backends/features or invalid descriptors.
-        // Currently implemented on D3D12 only; unsupported backends emit an informational diagnostic.
+        // Optional TLAS prebuild query. See doc/memory-queries.md for the contract
+        // and backend limitations.
         virtual bool queryTopLevelAccelStructPrebuildInfo(const rt::AccelStructDesc& desc,
             uint32_t instanceCount, rt::AccelStructPrebuildInfo& outInfo) = 0;
 

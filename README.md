@@ -92,7 +92,7 @@ The default values of these configuration variables should be OK for most use ca
 
 ## Using NVRHI in Applications
 
-See the [programming guide](doc/ProgrammingGuide.md) and the [tutorial](doc/Tutorial.md).
+See the [programming guide](doc/ProgrammingGuide.md), the [tutorial](doc/Tutorial.md), and the [optional memory query reference](doc/memory-queries.md).
 
 ## NVAPI Support
 
