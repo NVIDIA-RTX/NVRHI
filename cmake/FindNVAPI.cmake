@@ -30,8 +30,12 @@ if (WIN32)
             "${CMAKE_PROJECT_DIR}/nvapi")
     endif()
 
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-        find_library(NVAPI_LIBRARY nvapi64 
+    if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(ARM64|arm64|aarch64)$")
+        find_library(NVAPI_LIBRARY nvapia64
+            PATHS ${NVAPI_SEARCH_PATHS}
+            PATH_SUFFIXES aarch64)
+    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+        find_library(NVAPI_LIBRARY nvapi64
             PATHS ${NVAPI_SEARCH_PATHS}
             PATH_SUFFIXES amd64)
     else()

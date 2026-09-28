@@ -23,18 +23,32 @@ if( TARGET aftermath )
     return()
 endif()
 
+if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(ARM64|arm64|aarch64)$")
+    set(AFTERMATH_ARCH arm64)
+else()
+    set(AFTERMATH_ARCH x64)
+endif()
+
 if (NOT AFTERMATH_SEARCH_PATHS)
     set(AFTERMATH_FETCH_DIR "" CACHE STRING "Directory to fetch aftermath sdk to, empty string uses build directory default")
 
     include(FetchContent)
-    if(WIN32)
-        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2025_1_0/windows/NVIDIA_Nsight_Aftermath_SDK_2025.1.0.25009.zip
+    if(WIN32 AND AFTERMATH_ARCH STREQUAL "arm64")
+        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2026_3_0/windows_arm64/nvidia_nsight_aftermath_sdk_2026.3.0.26197-windows_arm64.zip
             CACHE STRING "Url to Aftermath SDK archive (.zip)")
-        set(AFTERMATH_FETCH_MD5 84101cad47eeb792c3b100e38d7ab453 CACHE STRING "MD5 Hash of Aftermath SDK archive")
-    else()
-        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2025_1_0/linux/NVIDIA_Nsight_Aftermath_SDK_2025.1.0.25009.tgz
+        set(AFTERMATH_FETCH_MD5 5882ebff768fc4161da6ef694cbfb038 CACHE STRING "MD5 Hash of Aftermath SDK archive")
+    elseif(WIN32)
+        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2026_3_0/windows_x64/NVIDIA_Nsight_Aftermath_SDK_2026.3.0.26197-windows_x64.zip
+            CACHE STRING "Url to Aftermath SDK archive (.zip)")
+        set(AFTERMATH_FETCH_MD5 0dfd9a5530b81ad8e065696f1d81bb10 CACHE STRING "MD5 Hash of Aftermath SDK archive")
+    elseif(AFTERMATH_ARCH STREQUAL "arm64")
+        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2026_3_1/linux_arm64/nvidia_nsight_aftermath_sdk_2026.3.1.26217-linux_arm64.tgz
             CACHE STRING "Url to Aftermath SDK archive (.tgz)")
-        set(AFTERMATH_FETCH_MD5 ec6253c807da34e55052574cb5db8726 CACHE STRING "MD5 Hash of Aftermath SDK archive")
+        set(AFTERMATH_FETCH_MD5 c88f8d604078155087aef6dc156b5938 CACHE STRING "MD5 Hash of Aftermath SDK archive")
+    else()
+        set(AFTERMATH_FETCH_URL https://developer.nvidia.com/downloads/assets/tools/secure/nsight-aftermath-sdk/2026_3_1/linux_x64/nvidia_nsight_aftermath_sdk_2026.3.1.26217-linux_x64.tgz
+            CACHE STRING "Url to Aftermath SDK archive (.tgz)")
+        set(AFTERMATH_FETCH_MD5 44365a455fa7ced3430b3b5c1ccfe874 CACHE STRING "MD5 Hash of Aftermath SDK archive")
     endif()
 
     FetchContent_Declare(
@@ -53,18 +67,18 @@ find_path(AFTERMATH_INCLUDE_DIR GFSDK_Aftermath.h
     PATHS ${AFTERMATH_SEARCH_PATHS}
     PATH_SUFFIXES "include")
 
-find_library(AFTERMATH_LIBRARY GFSDK_Aftermath_Lib.x64
+find_library(AFTERMATH_LIBRARY GFSDK_Aftermath_Lib.${AFTERMATH_ARCH}
     PATHS ${AFTERMATH_SEARCH_PATHS}
     REQUIRED
-    PATH_SUFFIXES "lib/x64")
+    PATH_SUFFIXES "lib/${AFTERMATH_ARCH}")
 
 add_library(aftermath SHARED IMPORTED)
 target_include_directories(aftermath INTERFACE ${AFTERMATH_INCLUDE_DIR})
 
 if(WIN32)
-    find_file(AFTERMATH_RUNTIME_LIBRARY GFSDK_Aftermath_Lib.x64.dll
+    find_file(AFTERMATH_RUNTIME_LIBRARY GFSDK_Aftermath_Lib.${AFTERMATH_ARCH}.dll
         PATHS ${AFTERMATH_SEARCH_PATHS}
-        PATH_SUFFIXES "lib/x64")
+        PATH_SUFFIXES "lib/${AFTERMATH_ARCH}")
     set_property(TARGET aftermath PROPERTY IMPORTED_LOCATION ${AFTERMATH_RUNTIME_LIBRARY})
     set_property(TARGET aftermath PROPERTY IMPORTED_IMPLIB ${AFTERMATH_LIBRARY})
 else()
