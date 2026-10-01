@@ -19,21 +19,29 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-# Sets NVRHI_TARGET_ARCH to one of: arm64, x64, x86.
+# Sets NVRHI_TARGET_ARCH to one of: arm64, x64, x86, and NVRHI_HOST_ARCH likewise.
 #
 # CMAKE_CXX_COMPILER_ARCHITECTURE_ID is only populated for MSVC-style
 # compilers on Windows (cl, clang-cl). GCC and Clang on Linux leave it empty,
 # so CMAKE_SYSTEM_PROCESSOR (uname -m, or the toolchain file) is consulted too.
 
-if (NVRHI_TARGET_ARCH)
-    return()
-endif()
+macro(_nvrhi_arch out id processor)
+    if ("${id}" STREQUAL "ARM64" OR "${processor}" MATCHES "^(ARM64|arm64|aarch64)$")
+        set(${out} arm64)
+    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(${out} x64)
+    else()
+        set(${out} x86)
+    endif()
+endmacro()
 
-if (CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64"
-    OR CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64)$")
-    set(NVRHI_TARGET_ARCH arm64)
-elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(NVRHI_TARGET_ARCH x64)
-else()
-    set(NVRHI_TARGET_ARCH x86)
+if (NOT NVRHI_TARGET_ARCH)
+    _nvrhi_arch(NVRHI_TARGET_ARCH "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}" "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+if (NOT NVRHI_HOST_ARCH)
+    if (CMAKE_HOST_SYSTEM_PROCESSOR)
+        _nvrhi_arch(NVRHI_HOST_ARCH "" "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    else()
+        set(NVRHI_HOST_ARCH ${NVRHI_TARGET_ARCH})
+    endif()
 endif()
