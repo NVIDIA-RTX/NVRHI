@@ -21,18 +21,26 @@
 
 # Sets NVRHI_TARGET_ARCH to one of: arm64, x64, x86, and NVRHI_HOST_ARCH likewise.
 #
-# CMAKE_CXX_COMPILER_ARCHITECTURE_ID is only populated for MSVC-style
-# compilers on Windows (cl, clang-cl). GCC and Clang on Linux leave it empty,
-# so CMAKE_SYSTEM_PROCESSOR (uname -m, or the toolchain file) is consulted too.
 
 macro(_nvrhi_arch out id processor)
-    if ("${id}" STREQUAL "ARM64" OR "${processor}" MATCHES "^(ARM64|arm64|aarch64)$")
-        set(${out} arm64)
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-        set(${out} x64)
+    if (NOT "${id}" STREQUAL "")
+        set(_nvrhi_arch_value "${id}")
     else()
-        set(${out} x86)
+        set(_nvrhi_arch_value "${processor}")
     endif()
+
+    if ("${_nvrhi_arch_value}" MATCHES "^(ARM64|arm64|aarch64)$")
+        set(${out} arm64)
+    elseif ("${_nvrhi_arch_value}" MATCHES "^(x64|X64|x86_64|AMD64|amd64)$")
+        set(${out} x64)
+    elseif ("${_nvrhi_arch_value}" MATCHES "^(X86|x86|i[3-6]86)$")
+        set(${out} x86)
+    else()
+        message(FATAL_ERROR
+            "NVRHI: cannot determine ${out} from compiler id '${id}' / processor '${processor}'. "
+            "Set ${out} to arm64, x64, or x86.")
+    endif()
+    unset(_nvrhi_arch_value)
 endmacro()
 
 if (NOT NVRHI_TARGET_ARCH)
