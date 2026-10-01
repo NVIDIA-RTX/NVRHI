@@ -30,15 +30,23 @@ if (WIN32)
             "${CMAKE_PROJECT_DIR}/nvapi")
     endif()
 
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-        find_library(NVAPI_LIBRARY nvapi64 
-            PATHS ${NVAPI_SEARCH_PATHS}
-            PATH_SUFFIXES amd64)
+    include("${CMAKE_CURRENT_LIST_DIR}/NvrhiTargetArch.cmake")
+
+    # NVAPI SDK layout: <arch folder>/<library>.lib
+    if (NVRHI_TARGET_ARCH STREQUAL "arm64")
+        set(NVAPI_LIBRARY_NAME nvapia64)   # R615 and later
+        set(NVAPI_LIBRARY_DIR aarch64)
+    elseif (NVRHI_TARGET_ARCH STREQUAL "x64")
+        set(NVAPI_LIBRARY_NAME nvapi64)
+        set(NVAPI_LIBRARY_DIR amd64)
     else()
-        find_library(NVAPI_LIBRARY nvapi 
-            PATHS ${NVAPI_SEARCH_PATHS}
-            PATH_SUFFIXES x86)
+        set(NVAPI_LIBRARY_NAME nvapi)
+        set(NVAPI_LIBRARY_DIR x86)
     endif()
+
+    find_library(NVAPI_LIBRARY ${NVAPI_LIBRARY_NAME}
+        PATHS ${NVAPI_SEARCH_PATHS}
+        PATH_SUFFIXES ${NVAPI_LIBRARY_DIR})
 
     find_path(NVAPI_INCLUDE_DIR nvapi.h 
         PATHS ${NVAPI_SEARCH_PATHS})
