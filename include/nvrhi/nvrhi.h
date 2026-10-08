@@ -65,7 +65,7 @@ namespace nvrhi
 {
     // Version of the public API provided by NVRHI.
     // Increment this when any changes to the API are made.
-    static constexpr uint32_t c_HeaderVersion = 27;
+    static constexpr uint32_t c_HeaderVersion = 28;
 
     // Verifies that the version of the implementation matches the version of the header.
     // Returns true if they match. Use this when initializing apps using NVRHI as a shared library.
@@ -3290,6 +3290,16 @@ namespace nvrhi
 
     typedef RefCountPtr<ICommandListLifetimeTracker> CommandListLifetimeTrackerHandle;
 
+    // Memory held by a command list's internal chunk pools, see ICommandList::getInternalMemoryUsage.
+    struct CommandListMemoryUsage
+    {
+        // AS build scratch chunks, in device-local memory.
+        uint64_t scratchBytes = 0;
+
+        // Upload chunks, in CPU-visible memory.
+        uint64_t uploadBytes = 0;
+    };
+
     //////////////////////////////////////////////////////////////////////////
     // ICommandList
     //////////////////////////////////////////////////////////////////////////
@@ -3785,6 +3795,12 @@ namespace nvrhi
 
         // Returns the CommandListParameters structure that was used to create the command list. 
         virtual const CommandListParameters& getDesc() = 0;
+
+        // Returns the total size of the chunks created by the upload and scratch managers. The chunks are only
+        // freed when the command list is destroyed, so this never decreases. Not safe to call while another thread
+        // is recording into this command list.
+        // - DX11: Always returns zeros.
+        [[nodiscard]] virtual CommandListMemoryUsage getInternalMemoryUsage() const = 0;
     };
 
     typedef RefCountPtr<ICommandList> CommandListHandle;

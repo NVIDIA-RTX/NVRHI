@@ -281,6 +281,7 @@ namespace nvrhi::validation
 
         IDevice* getDevice() override;
         const CommandListParameters& getDesc() override;
+        [[nodiscard]] CommandListMemoryUsage getInternalMemoryUsage() const override;
     };
 
     class DeviceWrapper : public RefCounter<IDevice>

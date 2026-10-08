@@ -1180,6 +1180,11 @@ namespace nvrhi::validation
         return m_Device;
     }
 
+    CommandListMemoryUsage CommandListWrapper::getInternalMemoryUsage() const
+    {
+        return m_CommandList->getInternalMemoryUsage();
+    }
+
     const CommandListParameters& CommandListWrapper::getDesc()
     {
         return m_CommandList->getDesc();

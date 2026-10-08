@@ -172,6 +172,14 @@ namespace nvrhi::d3d12
         return m_Device;
     }
 
+    CommandListMemoryUsage CommandList::getInternalMemoryUsage() const
+    {
+        CommandListMemoryUsage usage;
+        usage.scratchBytes = m_DxrScratchManager.getChunkBytes();
+        usage.uploadBytes = m_UploadManager.getChunkBytes();
+        return usage;
+    }
+
     void CommandList::beginMarker(const char* name)
     {
         PIXBeginEvent(m_ActiveCommandList->commandList, 0, name);
