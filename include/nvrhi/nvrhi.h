@@ -1164,6 +1164,9 @@ namespace nvrhi
         uint8_t forcedSampleCount = 0;
         bool programmableSamplePositionsEnable = false;
         bool conservativeRasterEnable = false;
+        // Pixels by which conservative rasterization enlarges primitives beyond its own margin
+        // (Vulkan's extraPrimitiveOverestimationSize, clamped to the device's maximum); D3D has none.
+        float conservativeRasterExtraOverestimation = 0.f;
         bool quadFillEnable = false;
         char samplePositionsX[16]{};
         char samplePositionsY[16]{};
@@ -1198,6 +1201,7 @@ namespace nvrhi
         constexpr RasterState& setConservativeRasterEnable(bool value) { conservativeRasterEnable = value; return *this; }
         constexpr RasterState& enableConservativeRaster() { conservativeRasterEnable = true; return *this; }
         constexpr RasterState& disableConservativeRaster() { conservativeRasterEnable = false; return *this; }
+        constexpr RasterState& setConservativeRasterExtraOverestimation(float value) { conservativeRasterExtraOverestimation = value; return *this; }
         constexpr RasterState& setQuadFillEnable(bool value) { quadFillEnable = value; return *this; }
         constexpr RasterState& enableQuadFill() { quadFillEnable = true; return *this; }
         constexpr RasterState& disableQuadFill() { quadFillEnable = false; return *this; }
