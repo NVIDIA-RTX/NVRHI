@@ -108,6 +108,11 @@ namespace nvrhi::d3d12
             return nullptr;
         }
 
+        if (state.primitiveRestartIndexFormat == Format::R16_UINT)
+            desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFF;
+        else if (state.primitiveRestartIndexFormat == Format::R32_UINT)
+            desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
+
         desc.DSVFormat = getDxgiFormatMapping(fbinfo.depthFormat).rtvFormat;
 
         desc.SampleDesc.Count = fbinfo.sampleCount;
