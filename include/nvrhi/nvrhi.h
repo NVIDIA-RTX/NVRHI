@@ -1103,6 +1103,25 @@ namespace nvrhi
         constexpr BlendState& enableAlphaToCoverage() { alphaToCoverageEnable = true; return *this; }
         constexpr BlendState& disableAlphaToCoverage() { alphaToCoverageEnable = false; return *this; }
 
+        // Vulkan only (VK_EXT_blend_operation_advanced, with advancedBlendCoherentOperations): an
+        // advanced blend operation for the targets that blend, instead of their blend factors and
+        // operations. Its number from VK_BLEND_OP_ZERO_EXT (0 Zero, 1 Src, ... 45 Blue), -1 for
+        // none; whether the source and destination colors are premultiplied by their alpha, and
+        // how their coverage overlaps (VkBlendOverlapEXT: 0 uncorrelated, 1 disjoint, 2 conjoint).
+        int8_t advancedBlendOp = -1;
+        bool advancedSrcPremultiplied = true;
+        bool advancedDstPremultiplied = true;
+        uint8_t advancedBlendOverlap = 0;
+
+        constexpr BlendState& setAdvancedBlendOp(int8_t op, bool srcPremultiplied, bool dstPremultiplied, uint8_t overlap)
+        {
+            advancedBlendOp = op;
+            advancedSrcPremultiplied = srcPremultiplied;
+            advancedDstPremultiplied = dstPremultiplied;
+            advancedBlendOverlap = overlap;
+            return *this;
+        }
+
         [[nodiscard]] bool usesConstantColor(uint32_t numTargets) const;
 
         constexpr bool operator ==(const BlendState& other) const
@@ -1115,6 +1134,10 @@ namespace nvrhi
                 if (targets[i] != other.targets[i])
                     return false;
             }
+
+            if (advancedBlendOp != other.advancedBlendOp || advancedSrcPremultiplied != other.advancedSrcPremultiplied
+                || advancedDstPremultiplied != other.advancedDstPremultiplied || advancedBlendOverlap != other.advancedBlendOverlap)
+                return false;
 
             return true;
         }
