@@ -433,7 +433,11 @@ namespace nvrhi::vulkan
             .setPTessellationState(nullptr);
 
         if (pso->desc.shadingRateState.enabled)
+        {
             renderingInfo.setPNext(&shadingRateState);
+            // Render passes with a shading rate attachment draw only with pipelines made for them.
+            pipelineInfo.setFlags(vk::PipelineCreateFlagBits::eRenderingFragmentShadingRateAttachmentKHR);
+        }
 
         auto tessellationState = vk::PipelineTessellationStateCreateInfo();
 
@@ -510,6 +514,10 @@ namespace nvrhi::vulkan
             .setPColorAttachments(framebuffer->colorAttachments.data())
             .setPDepthAttachment(framebuffer->depthAttachment.imageView ? &framebuffer->depthAttachment : nullptr)
             .setPStencilAttachment(framebuffer->stencilAttachment.imageView ? &framebuffer->stencilAttachment : nullptr);
+
+        // The shading rate attachment, which draws take their rates from.
+        if (framebuffer->shadingRateAttachment.imageView)
+            renderingInfo.setPNext(&framebuffer->shadingRateAttachment);
         
         m_CurrentCmdBuf->cmdBuf.beginRendering(renderingInfo);
         m_CurrentCmdBuf->referencedResources.push_back(framebuffer);
