@@ -131,6 +131,7 @@ namespace
         void SetOMMTriangles(D3D12RaytracingGeometryDesc& triangles, D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC* linkage)
         {
             m_data.type = D3D12_RAYTRACING_GEOMETRY_TYPE_OMM_TRIANGLES;
+            m_data.flags = triangles.m_data.flags;
             m_data.ommTriangles.pTriangles = &triangles.m_data.triangles;
             m_data.ommTriangles.pOmmLinkage = linkage;
         }
@@ -204,6 +205,11 @@ namespace
             m_desc.ppGeometryDescs = m_ommGeomDescsPtr.data();
             m_desc.NumDescs = numDescs;
             m_desc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY_OF_POINTERS;
+        }
+
+        // A geometry without opacity micromaps among ones with: its plain triangles desc.
+        void SetGeometryWithoutOMM(uint32_t index) {
+            m_ommGeomDescsPtr[index] = &m_geomDescs[index];
         }
 
         D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC& GetOMMLinkageDesc(uint32_t index)
@@ -773,7 +779,10 @@ namespace nvrhi::d3d12
                 {
                     const rt::GeometryDesc& srcDesc = desc.bottomLevelGeometries[i];
                     D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC& outLinkage = outASInputs.GetOMMLinkageDesc(i);
-                    fillD3dGeometryOMMLinkageDesc(outLinkage, srcDesc);
+                    if (srcDesc.geometryData.triangles.opacityMicromap != nullptr)
+                        fillD3dGeometryOMMLinkageDesc(outLinkage, srcDesc);
+                    else
+                        outASInputs.SetGeometryWithoutOMM(i);
                 }
             }
 #endif
@@ -2069,7 +2078,10 @@ namespace nvrhi::d3d12
             {
                 const rt::GeometryDesc& srcDesc = pGeometries[i];
                 D3D12_RAYTRACING_GEOMETRY_OMM_LINKAGE_DESC& outLinkage = inputs.GetOMMLinkageDesc(i);
-                fillD3dGeometryOMMLinkageDesc(outLinkage, srcDesc);
+                if (srcDesc.geometryData.triangles.opacityMicromap != nullptr)
+                    fillD3dGeometryOMMLinkageDesc(outLinkage, srcDesc);
+                else
+                    inputs.SetGeometryWithoutOMM(i);
             }
         }
 #endif
