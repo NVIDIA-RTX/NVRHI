@@ -1337,6 +1337,9 @@ namespace nvrhi
         SamplerAddressMode addressV = SamplerAddressMode::Clamp;
         SamplerAddressMode addressW = SamplerAddressMode::Clamp;
         SamplerReductionType reductionType = SamplerReductionType::Standard;
+        // The levels of detail sampled are clamped to [minLod, maxLod] (maxLod 0: level 0 only).
+        float minLod = 0.f;
+        float maxLod = 3.402823466e+38f;
 
         SamplerDesc& setBorderColor(const Color& color) { borderColor = color; return *this; }
         SamplerDesc& setMaxAnisotropy(float value) { maxAnisotropy = value; return *this; }
@@ -1350,6 +1353,7 @@ namespace nvrhi
         SamplerDesc& setAddressW(SamplerAddressMode mode) { addressW = mode; return *this; }
         SamplerDesc& setAllAddressModes(SamplerAddressMode mode) { addressU = addressV = addressW = mode; return *this; }
         SamplerDesc& setReductionType(SamplerReductionType type) { reductionType = type; return *this; }
+        SamplerDesc& setLodRange(float min, float max) { minLod = min; maxLod = max; return *this; }
     };
 
     class ISampler : public IResource

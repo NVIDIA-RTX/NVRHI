@@ -406,8 +406,8 @@ namespace nvrhi::d3d11
         desc11.BorderColor[1] = d.borderColor.g;
         desc11.BorderColor[2] = d.borderColor.b;
         desc11.BorderColor[3] = d.borderColor.a;
-        desc11.MinLOD = 0;
-        desc11.MaxLOD = D3D11_FLOAT32_MAX;
+        desc11.MinLOD = d.minLod;
+        desc11.MaxLOD = d.maxLod;
 
         RefCountPtr<ID3D11SamplerState> sState;
         const HRESULT res = m_Context.device->CreateSamplerState(&desc11, &sState);
