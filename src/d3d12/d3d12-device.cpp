@@ -570,8 +570,8 @@ namespace nvrhi::d3d12
         m_d3d12desc.BorderColor[1] = m_Desc.borderColor.g;
         m_d3d12desc.BorderColor[2] = m_Desc.borderColor.b;
         m_d3d12desc.BorderColor[3] = m_Desc.borderColor.a;
-        m_d3d12desc.MinLOD = 0;
-        m_d3d12desc.MaxLOD = D3D12_FLOAT32_MAX;
+        m_d3d12desc.MinLOD = desc.minLod;
+        m_d3d12desc.MaxLOD = desc.maxLod;
     }
     
     void Sampler::createDescriptor(size_t descriptor) const
