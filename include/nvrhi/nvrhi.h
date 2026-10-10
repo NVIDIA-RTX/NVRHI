@@ -1051,6 +1051,27 @@ namespace nvrhi
 
     NVRHI_ENUM_CLASS_FLAG_OPERATORS(ColorMask)
 
+    // Logic operations, in Vulkan's order (VkLogicOp).
+    enum class LogicOp : uint8_t
+    {
+        Clear = 0,
+        And = 1,
+        AndReverse = 2,
+        Copy = 3,
+        AndInverted = 4,
+        NoOp = 5,
+        Xor = 6,
+        Or = 7,
+        Nor = 8,
+        Equivalent = 9,
+        Invert = 10,
+        OrReverse = 11,
+        CopyInverted = 12,
+        OrInverted = 13,
+        Nand = 14,
+        Set = 15
+    };
+
     struct BlendState
     {
         struct RenderTarget
@@ -1097,8 +1118,16 @@ namespace nvrhi
 
         RenderTarget targets[c_MaxRenderTargets];
         bool alphaToCoverageEnable = false;
+        // A logic operation between the pixel shader's output and the target's texels, on their
+        // bits, instead of blending (blending is off with it): UINT and UNORM targets, one
+        // operation for all of them. Vulkan needs the logicOp feature, D3D11 and D3D12
+        // OutputMergerLogicOp.
+        bool logicOpEnable = false;
+        LogicOp logicOp = LogicOp::Copy;
 
         constexpr BlendState& setRenderTarget(uint32_t index, const RenderTarget& target) { targets[index] = target; return *this; }
+        constexpr BlendState& setLogicOpEnable(bool enable) { logicOpEnable = enable; return *this; }
+        constexpr BlendState& setLogicOp(LogicOp value) { logicOp = value; return *this; }
         constexpr BlendState& setAlphaToCoverageEnable(bool enable) { alphaToCoverageEnable = enable; return *this; }
         constexpr BlendState& enableAlphaToCoverage() { alphaToCoverageEnable = true; return *this; }
         constexpr BlendState& disableAlphaToCoverage() { alphaToCoverageEnable = false; return *this; }
@@ -1108,6 +1137,9 @@ namespace nvrhi
         constexpr bool operator ==(const BlendState& other) const
         {
             if (alphaToCoverageEnable != other.alphaToCoverageEnable)
+                return false;
+
+            if (logicOpEnable != other.logicOpEnable || logicOp != other.logicOp)
                 return false;
 
             for (uint32_t i = 0; i < c_MaxRenderTargets; ++i)

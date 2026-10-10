@@ -383,7 +383,9 @@ namespace nvrhi::vulkan
 
         auto colorBlend = vk::PipelineColorBlendStateCreateInfo()
                             .setAttachmentCount(uint32_t(colorBlendAttachments.size()))
-                            .setPAttachments(colorBlendAttachments.data());
+                            .setPAttachments(colorBlendAttachments.data())
+                            .setLogicOpEnable(blendState.logicOpEnable)
+                            .setLogicOp(vk::LogicOp(blendState.logicOp));
 
         pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fbinfo.colorFormats.size()));
 

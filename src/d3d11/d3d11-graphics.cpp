@@ -426,6 +426,8 @@ namespace nvrhi::d3d11
     {
         size_t hash = 0;
         hash_combine(hash, blendState.alphaToCoverageEnable);
+        hash_combine(hash, blendState.logicOpEnable);
+        hash_combine(hash, blendState.logicOp);
 
         for (const auto& target : blendState.targets)
         {
@@ -443,6 +445,59 @@ namespace nvrhi::d3d11
 
         if (d3dBlendState)
             return d3dBlendState;
+
+        // Logic operations: D3D11.1's blend state.
+        if (blendState.logicOpEnable)
+        {
+            RefCountPtr<ID3D11Device1> device1;
+            if (FAILED(m_Context.device->QueryInterface(IID_PPV_ARGS(&device1))))
+            {
+                m_Context.error("Logic operations need a D3D11.1 device");
+                return nullptr;
+            }
+
+            // D3D11's logic operations, in D3D11_LOGIC_OP's order, by nvrhi::LogicOp (Vulkan's order).
+            static const D3D11_LOGIC_OP logicOps[] = {
+                D3D11_LOGIC_OP_CLEAR, D3D11_LOGIC_OP_AND, D3D11_LOGIC_OP_AND_REVERSE, D3D11_LOGIC_OP_COPY,
+                D3D11_LOGIC_OP_AND_INVERTED, D3D11_LOGIC_OP_NOOP, D3D11_LOGIC_OP_XOR, D3D11_LOGIC_OP_OR,
+                D3D11_LOGIC_OP_NOR, D3D11_LOGIC_OP_EQUIV, D3D11_LOGIC_OP_INVERT, D3D11_LOGIC_OP_OR_REVERSE,
+                D3D11_LOGIC_OP_COPY_INVERTED, D3D11_LOGIC_OP_OR_INVERTED, D3D11_LOGIC_OP_NAND, D3D11_LOGIC_OP_SET };
+
+            // The first target's description only, without independent blending (as D3D12), and
+            // no blending with the logic operation.
+            D3D11_BLEND_DESC1 desc1 = {};
+            desc1.AlphaToCoverageEnable = blendState.alphaToCoverageEnable ? TRUE : FALSE;
+            desc1.IndependentBlendEnable = FALSE;
+            for (uint32_t i = 0; i < c_MaxRenderTargets; i++)
+            {
+                const BlendState::RenderTarget& src = blendState.targets[i];
+                D3D11_RENDER_TARGET_BLEND_DESC1& dst = desc1.RenderTarget[i];
+                dst.BlendEnable = FALSE;
+                dst.LogicOpEnable = TRUE;
+                dst.SrcBlend = convertBlendValue(src.srcBlend);
+                dst.DestBlend = convertBlendValue(src.destBlend);
+                dst.BlendOp = convertBlendOp(src.blendOp);
+                dst.SrcBlendAlpha = convertBlendValue(src.srcBlendAlpha);
+                dst.DestBlendAlpha = convertBlendValue(src.destBlendAlpha);
+                dst.BlendOpAlpha = convertBlendOp(src.blendOpAlpha);
+                dst.LogicOp = logicOps[uint32_t(blendState.logicOp) & 15];
+                dst.RenderTargetWriteMask = (UINT8)src.colorWriteMask;
+            }
+
+            RefCountPtr<ID3D11BlendState1> d3dBlendState1;
+            const HRESULT res = device1->CreateBlendState1(&desc1, &d3dBlendState1);
+            if (FAILED(res))
+            {
+                std::stringstream ss;
+                ss << "CreateBlendState1 call failed, HRESULT = 0x" << std::hex << std::setw(8) << res;
+                m_Context.error(ss.str());
+                return nullptr;
+            }
+
+            d3dBlendState = d3dBlendState1.Get();
+            m_BlendStates[hash] = d3dBlendState;
+            return d3dBlendState;
+        }
 
         D3D11_BLEND_DESC desc11New;
         desc11New.AlphaToCoverageEnable = blendState.alphaToCoverageEnable ? TRUE : FALSE;
