@@ -1692,6 +1692,14 @@ namespace nvrhi::vulkan
         {
             pipelineFlags2.setFlags(vk::PipelineCreateFlagBits2::eRayTracingAllowSpheresAndLinearSweptSpheresNV);
         }
+        // Tracing acceleration structures with opacity micromaps needs the pipeline to allow them
+        // (the flags2 structure, when chained, replaces the create info's flags).
+        vk::PipelineCreateFlags pipelineCreateFlags;
+        if (m_Context.extensions.EXT_opacity_micromap && desc.allowOpacityMicromaps)
+        {
+            pipelineCreateFlags |= vk::PipelineCreateFlagBits::eRayTracingOpacityMicromapEXT;
+            pipelineFlags2.flags |= vk::PipelineCreateFlagBits2::eRayTracingOpacityMicromapEXT;
+        }
 
         // Build the linked list of extension structures
 #define APPEND_EXTENSION(condition, desc) if (condition) { (desc).pNext = pNext; pNext = &(desc); }
@@ -1704,6 +1712,7 @@ namespace nvrhi::vulkan
             .setStages(shaderStages)
             .setGroups(shaderGroups)
             .setLayout(pso->pipelineLayout)
+            .setFlags(pipelineCreateFlags)
             .setMaxPipelineRayRecursionDepth(desc.maxRecursionDepth)
             .setPLibraryInfo(&libraryInfo)
             .setPNext(pNext);

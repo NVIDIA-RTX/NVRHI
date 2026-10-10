@@ -72,6 +72,11 @@ namespace nvrhi::vulkan
         if (desc.isAccelStructBuildInput)
             usageFlags |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
 
+        // Opacity micromap builds read their inputs (the OMM data and per-OMM descs) from such
+        // buffers too.
+        if (desc.isAccelStructBuildInput && m_Context.extensions.EXT_opacity_micromap)
+            usageFlags |= vk::BufferUsageFlagBits::eMicromapBuildInputReadOnlyEXT;
+
         if (desc.isAccelStructStorage)
             usageFlags |= vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR;
 
