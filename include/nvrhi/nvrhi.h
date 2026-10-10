@@ -2651,6 +2651,12 @@ namespace nvrhi
 
         BindingLayoutVector bindingLayouts;
         
+        // Primitive restart: strips restart at the index buffer format's largest index (0xFFFF for
+        // R16_UINT, 0xFFFFFFFF for R32_UINT; UNKNOWN: no restart). Vulkan's primitiveRestartEnable,
+        // D3D12's IBStripCutValue, which must match the format of the index buffers drawn with;
+        // D3D11 always restarts strips.
+        Format primitiveRestartIndexFormat = Format::UNKNOWN;
+
         GraphicsPipelineDesc& setPrimType(PrimitiveType value) { primType = value; return *this; }
         GraphicsPipelineDesc& setPatchControlPoints(uint32_t value) { patchControlPoints = value; return *this; }
         GraphicsPipelineDesc& setInputLayout(IInputLayout* value) { inputLayout = value; return *this; }
@@ -2665,6 +2671,7 @@ namespace nvrhi
         GraphicsPipelineDesc& setRenderState(const RenderState& value) { renderState = value; return *this; }
         GraphicsPipelineDesc& setVariableRateShadingState(const VariableRateShadingState& value) { shadingRateState = value; return *this; }
         GraphicsPipelineDesc& addBindingLayout(IBindingLayout* layout) { bindingLayouts.push_back(layout); return *this; }
+        GraphicsPipelineDesc& setPrimitiveRestartIndexFormat(Format value) { primitiveRestartIndexFormat = value; return *this; }
     };
 
     class IGraphicsPipeline : public IResource
