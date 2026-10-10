@@ -217,7 +217,9 @@ namespace
         }
 
         void SetFlags(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags) {
-            m_desc.Flags = flags;
+            // AllowDataAccess is Vulkan's only.
+            m_desc.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS(
+                uint32_t(flags) & ~uint32_t(nvrhi::rt::AccelStructBuildFlags::AllowDataAccess));
         }
 
         void SetInstanceDescs(D3D12_GPU_VIRTUAL_ADDRESS instanceDescs, UINT numDescs) {

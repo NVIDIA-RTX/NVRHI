@@ -747,7 +747,10 @@ namespace nvrhi::vulkan
         static_assert(uint32_t(rt::AccelStructBuildFlags::PreferFastBuild) == uint32_t(VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR));
         static_assert(uint32_t(rt::AccelStructBuildFlags::MinimizeMemory) == uint32_t(VK_BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR));
 
-        return vk::BuildAccelerationStructureFlagsKHR(uint32_t(buildFlags) & 0x1f);
+        vk::BuildAccelerationStructureFlagsKHR flags = vk::BuildAccelerationStructureFlagsKHR(uint32_t(buildFlags) & 0x1f);
+        if ((buildFlags & rt::AccelStructBuildFlags::AllowDataAccess) != 0)
+            flags |= vk::BuildAccelerationStructureFlagBitsKHR::eAllowDataAccess;
+        return flags;
 #else
         vk::BuildAccelerationStructureFlagsKHR flags = vk::BuildAccelerationStructureFlagBitsKHR(0);
         if ((buildFlags & rt::AccelStructBuildFlags::AllowUpdate) != 0)
@@ -760,6 +763,8 @@ namespace nvrhi::vulkan
             flags |= vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastBuild;
         if ((buildFlags & rt::AccelStructBuildFlags::MinimizeMemory) != 0)
             flags |= vk::BuildAccelerationStructureFlagBitsKHR::eLowMemory;
+        if ((buildFlags & rt::AccelStructBuildFlags::AllowDataAccess) != 0)
+            flags |= vk::BuildAccelerationStructureFlagBitsKHR::eAllowDataAccess;
         return flags;
 #endif
     }
