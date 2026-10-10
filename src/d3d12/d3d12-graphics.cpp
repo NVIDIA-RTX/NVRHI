@@ -21,6 +21,7 @@
 */
 
 #include "d3d12-backend.h"
+#include <directx/d3dx12_pipeline_state_stream.h>
 
 #include <nvrhi/common/misc.h>
 #include <sstream>
@@ -168,6 +169,23 @@ namespace nvrhi::d3d12
             return pipelineState;
         }
 #endif
+
+        // The depth bounds test is in D3D12_DEPTH_STENCIL_DESC1, which only pipeline state streams take.
+        if (depthState.depthBoundsTestEnable)
+        {
+            CD3DX12_PIPELINE_STATE_STREAM1 stream(desc);
+            CD3DX12_DEPTH_STENCIL_DESC1 depthStencil(desc.DepthStencilState);
+            depthStencil.DepthBoundsTestEnable = TRUE;
+            stream.DepthStencilState = depthStencil;
+            const D3D12_PIPELINE_STATE_STREAM_DESC streamDesc = { sizeof(stream), &stream };
+            const HRESULT streamResult = m_Context.device2->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&pipelineState));
+            if (FAILED(streamResult))
+            {
+                m_Context.error("Failed to create a graphics pipeline state object with the depth bounds test");
+                return nullptr;
+            }
+            return pipelineState;
+        }
 
         const HRESULT hr = m_Context.device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipelineState));
 
@@ -345,6 +363,14 @@ namespace nvrhi::d3d12
         if (pso->requiresBlendFactor && updateBlendFactor)
         {
             m_ActiveCommandList->commandList->OMSetBlendFactor(&state.blendConstantColor.r);
+        }
+
+        if (pso->desc.renderState.depthStencilState.depthBoundsTestEnable && (updatePipeline || !m_CurrentGraphicsStateValid
+            || m_CurrentGraphicsState.depthBoundsMin != state.depthBoundsMin || m_CurrentGraphicsState.depthBoundsMax != state.depthBoundsMax))
+        {
+            RefCountPtr<ID3D12GraphicsCommandList1> commandList1;
+            if (SUCCEEDED(m_ActiveCommandList->commandList->QueryInterface(IID_PPV_ARGS(&commandList1))))
+                commandList1->OMSetDepthBounds(state.depthBoundsMin, state.depthBoundsMax);
         }
 
         if (updateFramebuffer)

@@ -354,7 +354,8 @@ namespace nvrhi::vulkan
                                 .setDepthCompareOp(convertCompareOp(depthStencilState.depthFunc))
                                 .setStencilTestEnable(depthStencilState.stencilEnable)
                                 .setFront(convertStencilState(depthStencilState, depthStencilState.frontFaceStencil))
-                                .setBack(convertStencilState(depthStencilState, depthStencilState.backFaceStencil));
+                                .setBack(convertStencilState(depthStencilState, depthStencilState.backFaceStencil))
+                                .setDepthBoundsTestEnable(depthStencilState.depthBoundsTestEnable);
 
         // VRS state
         std::array<vk::FragmentShadingRateCombinerOpKHR, 2> combiners = {
@@ -387,7 +388,7 @@ namespace nvrhi::vulkan
 
         pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fbinfo.colorFormats.size()));
 
-        static_vector<vk::DynamicState, 5> dynamicStates = {
+        static_vector<vk::DynamicState, 6> dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
         };
@@ -397,6 +398,9 @@ namespace nvrhi::vulkan
             dynamicStates.push_back(vk::DynamicState::eStencilReference);
         if (pso->desc.shadingRateState.enabled)
             dynamicStates.push_back(vk::DynamicState::eFragmentShadingRateKHR);
+        // The depth bounds come with each draw state.
+        if (depthStencilState.depthBoundsTestEnable)
+            dynamicStates.push_back(vk::DynamicState::eDepthBounds);
 
         auto dynamicStateInfo = vk::PipelineDynamicStateCreateInfo()
             .setDynamicStateCount(uint32_t(dynamicStates.size()))
@@ -604,6 +608,12 @@ namespace nvrhi::vulkan
         if (pso->usesBlendConstants && (updatePipeline || m_CurrentGraphicsState.blendConstantColor != state.blendConstantColor))
         {
             m_CurrentCmdBuf->cmdBuf.setBlendConstants(&state.blendConstantColor.r);
+        }
+
+        if (pso->desc.renderState.depthStencilState.depthBoundsTestEnable && (updatePipeline
+            || m_CurrentGraphicsState.depthBoundsMin != state.depthBoundsMin || m_CurrentGraphicsState.depthBoundsMax != state.depthBoundsMax))
+        {
+            m_CurrentCmdBuf->cmdBuf.setDepthBounds(state.depthBoundsMin, state.depthBoundsMax);
         }
 
         if (state.indexBuffer.buffer && m_CurrentGraphicsState.indexBuffer != state.indexBuffer)
