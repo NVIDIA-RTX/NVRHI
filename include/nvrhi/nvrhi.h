@@ -1257,6 +1257,9 @@ namespace nvrhi
         bool            dynamicStencilRef = false;
         StencilOpDesc   frontFaceStencil;
         StencilOpDesc   backFaceStencil;
+        // Pixels whose depth target value lies outside the draw state's depth bounds
+        // (GraphicsState::depthBoundsMin, Max) are discarded (D3D12, Vulkan's depthBounds feature).
+        bool            depthBoundsTestEnable = false;
 
         constexpr DepthStencilState& setDepthTestEnable(bool value) { depthTestEnable = value; return *this; }
         constexpr DepthStencilState& enableDepthTest() { depthTestEnable = true; return *this; }
@@ -1274,6 +1277,7 @@ namespace nvrhi
         constexpr DepthStencilState& setFrontFaceStencil(const StencilOpDesc& value) { frontFaceStencil = value; return *this; }
         constexpr DepthStencilState& setBackFaceStencil(const StencilOpDesc& value) { backFaceStencil = value; return *this; }
         constexpr DepthStencilState& setDynamicStencilRef(bool value) { dynamicStencilRef = value; return *this; }
+        constexpr DepthStencilState& setDepthBoundsTestEnable(bool value) { depthBoundsTestEnable = value; return *this; }
         
     };
 
@@ -2784,6 +2788,9 @@ namespace nvrhi
         VariableRateShadingState shadingRateState;
         Color blendConstantColor{};
         uint8_t dynamicStencilRefValue = 0;
+        // For pipelines with DepthStencilState::depthBoundsTestEnable.
+        float depthBoundsMin = 0.f;
+        float depthBoundsMax = 1.f;
 
         BindingSetVector bindings;
 
@@ -2799,6 +2806,7 @@ namespace nvrhi
         GraphicsState& setShadingRateState(const VariableRateShadingState& value) { shadingRateState = value; return *this; }
         GraphicsState& setBlendColor(const Color& value) { blendConstantColor = value; return *this; }
         GraphicsState& setDynamicStencilRefValue(uint8_t value) { dynamicStencilRefValue = value; return *this; }
+        GraphicsState& setDepthBounds(float minValue, float maxValue) { depthBoundsMin = minValue; depthBoundsMax = maxValue; return *this; }
         GraphicsState& addBindingSet(IBindingSet* value) { bindings.push_back(value); return *this; }
         GraphicsState& addVertexBuffer(const VertexBufferBinding& value) { vertexBuffers.push_back(value); return *this; }
         GraphicsState& setIndexBuffer(const IndexBufferBinding& value) { indexBuffer = value; return *this; }
