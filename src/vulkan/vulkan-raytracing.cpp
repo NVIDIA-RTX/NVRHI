@@ -22,7 +22,9 @@
 
 #include "vulkan-backend.h"
 #include <nvrhi/common/misc.h>
+#include <cstddef>
 #include <sstream>
+#include <utility>
 
 namespace nvrhi::vulkan
 {
@@ -475,6 +477,63 @@ namespace nvrhi::vulkan
         return MemoryRequirements();
     }
 
+#define NVRHI_ASSERT_SAME_MEMBER(VkType, vkMember, NvrhiType, nvrhiMember) \
+    static_assert(offsetof(VkType, vkMember) == offsetof(NvrhiType, nvrhiMember)); \
+    static_assert(sizeof(std::declval<VkType&>().vkMember) == sizeof(std::declval<NvrhiType&>().nvrhiMember))
+
+    // offsetof can't take bitfields; the members on either side pin the bitfield word.
+    using VkClasArgs = VkClusterAccelerationStructureBuildTriangleClusterInfoNV;
+    using NvClasArgs = rt::cluster::nv::IndirectTriangleClasArgs;
+    static_assert(sizeof(VkClasArgs) == sizeof(NvClasArgs));
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, clusterID, NvClasArgs, clusterId);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, clusterFlags, NvClasArgs, clusterFlags);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, baseGeometryIndexAndGeometryFlags, NvClasArgs, baseGeometryIndexAndFlags);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, indexBufferStride, NvClasArgs, indexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, vertexBufferStride, NvClasArgs, vertexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, geometryIndexAndFlagsBufferStride, NvClasArgs, geometryIndexAndFlagsBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, opacityMicromapIndexBufferStride, NvClasArgs, opacityMicromapIndexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, indexBuffer, NvClasArgs, indexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, vertexBuffer, NvClasArgs, vertexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, geometryIndexAndFlagsBuffer, NvClasArgs, geometryIndexAndFlagsBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, opacityMicromapArray, NvClasArgs, opacityMicromapArray);
+    NVRHI_ASSERT_SAME_MEMBER(VkClasArgs, opacityMicromapIndexBuffer, NvClasArgs, opacityMicromapIndexBuffer);
+
+    using VkTemplateArgs = VkClusterAccelerationStructureBuildTriangleClusterTemplateInfoNV;
+    using NvTemplateArgs = rt::cluster::nv::IndirectTriangleTemplateArgs;
+    static_assert(sizeof(VkTemplateArgs) == sizeof(NvTemplateArgs));
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, clusterID, NvTemplateArgs, clusterId);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, clusterFlags, NvTemplateArgs, clusterFlags);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, baseGeometryIndexAndGeometryFlags, NvTemplateArgs, baseGeometryIndexAndFlags);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, indexBufferStride, NvTemplateArgs, indexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, vertexBufferStride, NvTemplateArgs, vertexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, geometryIndexAndFlagsBufferStride, NvTemplateArgs, geometryIndexAndFlagsBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, opacityMicromapIndexBufferStride, NvTemplateArgs, opacityMicromapIndexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, indexBuffer, NvTemplateArgs, indexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, vertexBuffer, NvTemplateArgs, vertexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, geometryIndexAndFlagsBuffer, NvTemplateArgs, geometryIndexAndFlagsBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, opacityMicromapArray, NvTemplateArgs, opacityMicromapArray);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, opacityMicromapIndexBuffer, NvTemplateArgs, opacityMicromapIndexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(VkTemplateArgs, instantiationBoundingBoxLimit, NvTemplateArgs, instantiationBoundingBoxLimit);
+
+    // geometryIndexOffset is a 24-bit bitfield in Vulkan, so only its neighbours are checked.
+    using VkInstantiateArgs = VkClusterAccelerationStructureInstantiateClusterInfoNV;
+    using NvInstantiateArgs = rt::cluster::nv::IndirectInstantiateTemplateArgs;
+    static_assert(sizeof(VkInstantiateArgs) == sizeof(NvInstantiateArgs));
+    NVRHI_ASSERT_SAME_MEMBER(VkInstantiateArgs, clusterIdOffset, NvInstantiateArgs, clusterIdOffset);
+    NVRHI_ASSERT_SAME_MEMBER(VkInstantiateArgs, clusterTemplateAddress, NvInstantiateArgs, clusterTemplate);
+    NVRHI_ASSERT_SAME_MEMBER(VkInstantiateArgs, vertexBuffer.startAddress, NvInstantiateArgs, vertexBuffer.startAddress);
+    NVRHI_ASSERT_SAME_MEMBER(VkInstantiateArgs, vertexBuffer.strideInBytes, NvInstantiateArgs, vertexBuffer.strideInBytes);
+
+    using VkBlasArgs = VkClusterAccelerationStructureBuildClustersBottomLevelInfoNV;
+    using NvBlasArgs = rt::cluster::IndirectArgs;
+    static_assert(sizeof(VkBlasArgs) == sizeof(NvBlasArgs));
+    NVRHI_ASSERT_SAME_MEMBER(VkBlasArgs, clusterReferencesCount, NvBlasArgs, clusterCount);
+    NVRHI_ASSERT_SAME_MEMBER(VkBlasArgs, clusterReferencesStride, NvBlasArgs, clusterAddressStride);
+    NVRHI_ASSERT_SAME_MEMBER(VkBlasArgs, clusterReferences, NvBlasArgs, clusterAddresses);
+#undef NVRHI_ASSERT_SAME_MEMBER
+
+    static_assert(uint32_t(rt::cluster::ClusterFlags::AllowDisableOMMs) == uint32_t(vk::ClusterAccelerationStructureClusterFlagBitsNV::eAllowDisableOpacityMicromaps));
+
     static vk::ClusterAccelerationStructureTypeNV convertClusterAccelerationStructureType(rt::cluster::OperationMoveType type)
     {
         switch (type)
@@ -536,7 +595,7 @@ namespace nvrhi::vulkan
         if (!fastTrace && fastBuild)
             operationFlags |= vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastBuild;
         if ((flags & rt::cluster::OperationFlags::AllowOMM) != 0)
-            operationFlags |= vk::BuildAccelerationStructureFlagBitsKHR::eAllowOpacityMicromapUpdateEXT;
+            operationFlags |= vk::BuildAccelerationStructureFlagBitsKHR::eAllowClusterOpacityMicromapsNV;
 
         // (flags & rt::cluster::OperationFlags::NoOverlap)
         // is used to populate noMoveOverlap on vk::ClusterAccelerationStructureMoveObjectsInputNV
@@ -582,6 +641,10 @@ namespace nvrhi::vulkan
                 clusterInput.maxTotalVertexCount = params.clas.maxTotalVertexCount;
                 clusterInput.minPositionTruncateBitCount = params.clas.minPositionTruncateBitCount;
                 inputInfo.opInput.pTriangleClusters = &clusterInput;
+
+                // Matches D3D12: CLAS allow position fetch wherever the device supports it.
+                if (context.extensions.KHR_ray_tracing_position_fetch)
+                    inputInfo.flags |= vk::BuildAccelerationStructureFlagBitsKHR::eAllowDataAccess;
                 break;
             }
 
@@ -1685,7 +1748,7 @@ namespace nvrhi::vulkan
         auto libraryInfo = vk::PipelineLibraryCreateInfoKHR();
 
         auto pipelineClusters = vk::RayTracingPipelineClusterAccelerationStructureCreateInfoNV()
-            .setAllowClusterAccelerationStructure(true);
+            .setAllowClusterAccelerationStructure(desc.allowClusters);
 
         auto pipelineFlags2 = vk::PipelineCreateFlags2CreateInfoKHR();
         if (m_Context.extensions.NV_ray_tracing_linear_swept_spheres)

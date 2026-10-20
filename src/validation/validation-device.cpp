@@ -2061,25 +2061,44 @@ namespace nvrhi::validation
 
         if (validateClasParams)
         {
+            // The four-component formats other than R10G10B10A2 have no DXR clusters equivalent.
             nvrhi::Format vertexFormat = params.clas.vertexFormat;
             const bool validVertexFormat =
-                (vertexFormat == nvrhi::Format::RGBA32_FLOAT)
-                || (vertexFormat == nvrhi::Format::RGB32_FLOAT)
+                (vertexFormat == nvrhi::Format::RGB32_FLOAT)
                 || (vertexFormat == nvrhi::Format::RG32_FLOAT)
-                || (vertexFormat == nvrhi::Format::RGBA16_FLOAT)
                 || (vertexFormat == nvrhi::Format::RG16_FLOAT)
-                || (vertexFormat == nvrhi::Format::RGBA16_SNORM)
                 || (vertexFormat == nvrhi::Format::RG16_SNORM)
-                || (vertexFormat == nvrhi::Format::RGBA8_SNORM)
                 || (vertexFormat == nvrhi::Format::RG8_SNORM)
-                || (vertexFormat == nvrhi::Format::RGBA16_UNORM)
                 || (vertexFormat == nvrhi::Format::RG16_UNORM)
-                || (vertexFormat == nvrhi::Format::RGBA8_UNORM)
                 || (vertexFormat == nvrhi::Format::RG8_UNORM)
                 || (vertexFormat == nvrhi::Format::R10G10B10A2_UNORM);
             if (!validVertexFormat)
             {
                 error("cluster::OperationParams " + std::string(operationType) + " does not have a valid vertex format");
+                isValid = false;
+            }
+
+            switch (params.clas.indexFormat)
+            {
+            case rt::cluster::OperationIndexFormat::IndexFormat8bit:
+            case rt::cluster::OperationIndexFormat::IndexFormat16bit:
+            case rt::cluster::OperationIndexFormat::IndexFormat32bit:
+                break;
+            default:
+                error("cluster::OperationParams " + std::string(operationType) + " does not have a valid indexFormat");
+                isValid = false;
+                break;
+            }
+
+            if ((params.flags & rt::cluster::OperationFlags::AllowOMM) != 0 && params.clas.maxOpacityMicromapIndexCount == 0)
+            {
+                error("cluster::OperationParams " + std::string(operationType) + " sets AllowOMM but maxOpacityMicromapIndexCount is 0");
+                isValid = false;
+            }
+
+            if (params.clas.maxOpacityMicromapIndexCount > params.clas.maxTriangleCount)
+            {
+                error("cluster::OperationParams " + std::string(operationType) + " maxOpacityMicromapIndexCount over maxTriangleCount. Maximum 1 opacity micromap per triangle");
                 isValid = false;
             }
 

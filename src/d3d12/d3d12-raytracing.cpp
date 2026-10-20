@@ -1029,10 +1029,58 @@ namespace nvrhi::d3d12
 #if NVRHI_WITH_NVAPI_CLUSTERS
     static_assert(NVAPI_D3D12_RAYTRACING_CLAS_BYTE_ALIGNMENT == nvrhi::rt::cluster::kClasByteAlignment);
     static_assert(NVAPI_D3D12_RAYTRACING_MAXIMUM_GEOMETRY_INDEX == nvrhi::rt::cluster::kMaxGeometryIndex);
+    static_assert(uint32_t(rt::cluster::ClusterFlags::AllowDisableOMMs) == NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_CLUSTER_FLAG_ALLOW_DISABLE_OMMS);
 
-    static_assert(sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS) == sizeof(nvrhi::rt::cluster::IndirectTriangleClasArgs));
-    static_assert(sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS) == sizeof(nvrhi::rt::cluster::IndirectTriangleTemplateArgs));
-    static_assert(sizeof(NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_INSTANTIATE_TEMPLATE_ARGS) == sizeof(nvrhi::rt::cluster::IndirectInstantiateTemplateArgs));
+    // offsetof can't take bitfields; the members on either side pin the bitfield word.
+    using NvapiClasArgs = NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS;
+    using NvClasArgs = rt::cluster::nv::IndirectTriangleClasArgs;
+    static_assert(sizeof(NvapiClasArgs) == sizeof(NvClasArgs));
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, clusterId, NvClasArgs, clusterId);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, clusterFlags, NvClasArgs, clusterFlags);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, baseGeometryIndexAndFlags, NvClasArgs, baseGeometryIndexAndFlags);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, indexBufferStride, NvClasArgs, indexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, vertexBufferStride, NvClasArgs, vertexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, geometryIndexAndFlagsBufferStride, NvClasArgs, geometryIndexAndFlagsBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, opacityMicromapIndexBufferStride, NvClasArgs, opacityMicromapIndexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, indexBuffer, NvClasArgs, indexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, vertexBuffer, NvClasArgs, vertexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, geometryIndexAndFlagsBuffer, NvClasArgs, geometryIndexAndFlagsBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, opacityMicromapArray, NvClasArgs, opacityMicromapArray);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiClasArgs, opacityMicromapIndexBuffer, NvClasArgs, opacityMicromapIndexBuffer);
+
+    using NvapiTemplateArgs = NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_TEMPLATE_ARGS;
+    using NvTemplateArgs = rt::cluster::nv::IndirectTriangleTemplateArgs;
+    static_assert(sizeof(NvapiTemplateArgs) == sizeof(NvTemplateArgs));
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, clusterId, NvTemplateArgs, clusterId);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, clusterFlags, NvTemplateArgs, clusterFlags);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, baseGeometryIndexAndFlags, NvTemplateArgs, baseGeometryIndexAndFlags);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, indexBufferStride, NvTemplateArgs, indexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, vertexBufferStride, NvTemplateArgs, vertexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, geometryIndexAndFlagsBufferStride, NvTemplateArgs, geometryIndexAndFlagsBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, opacityMicromapIndexBufferStride, NvTemplateArgs, opacityMicromapIndexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, indexBuffer, NvTemplateArgs, indexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, vertexBuffer, NvTemplateArgs, vertexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, geometryIndexAndFlagsBuffer, NvTemplateArgs, geometryIndexAndFlagsBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, opacityMicromapArray, NvTemplateArgs, opacityMicromapArray);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, opacityMicromapIndexBuffer, NvTemplateArgs, opacityMicromapIndexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiTemplateArgs, instantiationBoundingBoxLimit, NvTemplateArgs, instantiationBoundingBoxLimit);
+
+    using NvapiInstantiateArgs = NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_INSTANTIATE_TEMPLATE_ARGS;
+    using NvInstantiateArgs = rt::cluster::nv::IndirectInstantiateTemplateArgs;
+    static_assert(sizeof(NvapiInstantiateArgs) == sizeof(NvInstantiateArgs));
+    NVRHI_ASSERT_SAME_MEMBER(NvapiInstantiateArgs, clusterIdOffset, NvInstantiateArgs, clusterIdOffset);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiInstantiateArgs, geometryIndexOffset, NvInstantiateArgs, geometryIndexOffset);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiInstantiateArgs, clusterTemplate, NvInstantiateArgs, clusterTemplate);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiInstantiateArgs, vertexBuffer.StartAddress, NvInstantiateArgs, vertexBuffer.startAddress);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiInstantiateArgs, vertexBuffer.StrideInBytes, NvInstantiateArgs, vertexBuffer.strideInBytes);
+
+    using NvapiBlasArgs = NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_CLUSTER_ARGS;
+    using NvBlasArgs = rt::cluster::IndirectArgs;
+    static_assert(sizeof(NvapiBlasArgs) == sizeof(NvBlasArgs));
+    NVRHI_ASSERT_SAME_MEMBER(NvapiBlasArgs, clusterCount, NvBlasArgs, clusterCount);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiBlasArgs, reserved, NvBlasArgs, clusterAddressStride);
+    NVRHI_ASSERT_SAME_MEMBER(NvapiBlasArgs, clusterVAs, NvBlasArgs, clusterAddresses);
+#undef NVRHI_ASSERT_SAME_MEMBER
 
     // --- Helpers ---
     DEFINE_ENUM_FLAG_OPERATORS(NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAGS);
@@ -1172,6 +1220,77 @@ namespace nvrhi::d3d12
 #endif // #if NVRHI_WITH_NVAPI_CLUSTERS
 
 #if NVRHI_D3D12_WITH_DXRCLUSTER
+    using DxrClasArgs = D3D12_RTAS_OPERATION_BUILD_CLAS_FROM_TRIANGLES_ARGS;
+    using NvrhiClasArgs = rt::cluster::dxr::IndirectTriangleClasArgs;
+    static_assert(sizeof(DxrClasArgs) == sizeof(NvrhiClasArgs));
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, ClusterID, NvrhiClasArgs, clusterId);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, ClusterFlags, NvrhiClasArgs, clusterFlags);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, TriangleCount, NvrhiClasArgs, triangleCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, UniqueVertexIndexCount, NvrhiClasArgs, vertexCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, BaseGeometryIndexAndFlags, NvrhiClasArgs, baseGeometryIndexAndFlags);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, OpacityMicromapBaseLocation, NvrhiClasArgs, opacityMicromapBaseLocation);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, VertexBufferStride, NvrhiClasArgs, vertexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, IndexBufferStride, NvrhiClasArgs, indexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, OpacityMicromapIndexBufferStride, NvrhiClasArgs, opacityMicromapIndexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, GeometryIndexAndFlagsArrayStride, NvrhiClasArgs, geometryIndexAndFlagsBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, PositionTruncateBitCount, NvrhiClasArgs, positionTruncateBitCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, ReservedPadding, NvrhiClasArgs, reservedPadding);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, VertexBuffer, NvrhiClasArgs, vertexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, IndexBuffer, NvrhiClasArgs, indexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, GeometryIndexAndFlagsArray, NvrhiClasArgs, geometryIndexAndFlagsBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, GeometryIndexAndFlagsIndexBuffer, NvrhiClasArgs, geometryIndexAndFlagsIndexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, OpacityMicromapArray, NvrhiClasArgs, opacityMicromapArray);
+    NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, OpacityMicromapIndexBuffer, NvrhiClasArgs, opacityMicromapIndexBuffer);
+
+    // The native template args nest the CLAS args and end in a per-format union; nvrhi inlines both.
+    using DxrTemplateArgs = D3D12_RTAS_OPERATION_BUILD_CLUSTER_TEMPLATES_FROM_TRIANGLES_ARGS;
+    using NvrhiTemplateArgs = rt::cluster::dxr::IndirectTriangleTemplateArgs;
+    static_assert(sizeof(DxrTemplateArgs) == sizeof(NvrhiTemplateArgs));
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.ClusterID, NvrhiTemplateArgs, clusterId);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.ClusterFlags, NvrhiTemplateArgs, clusterFlags);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.TriangleCount, NvrhiTemplateArgs, triangleCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.UniqueVertexIndexCount, NvrhiTemplateArgs, vertexCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.BaseGeometryIndexAndFlags, NvrhiTemplateArgs, baseGeometryIndexAndFlags);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.OpacityMicromapBaseLocation, NvrhiTemplateArgs, opacityMicromapBaseLocation);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.VertexBufferStride, NvrhiTemplateArgs, vertexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.IndexBufferStride, NvrhiTemplateArgs, indexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.OpacityMicromapIndexBufferStride, NvrhiTemplateArgs, opacityMicromapIndexBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.GeometryIndexAndFlagsArrayStride, NvrhiTemplateArgs, geometryIndexAndFlagsBufferStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.PositionTruncateBitCount, NvrhiTemplateArgs, positionTruncateBitCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.ReservedPadding, NvrhiTemplateArgs, reservedPadding);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.VertexBuffer, NvrhiTemplateArgs, vertexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.IndexBuffer, NvrhiTemplateArgs, indexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.GeometryIndexAndFlagsArray, NvrhiTemplateArgs, geometryIndexAndFlagsBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.GeometryIndexAndFlagsIndexBuffer, NvrhiTemplateArgs, geometryIndexAndFlagsIndexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.OpacityMicromapArray, NvrhiTemplateArgs, opacityMicromapArray);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, TrianglesArgs.OpacityMicromapIndexBuffer, NvrhiTemplateArgs, opacityMicromapIndexBuffer);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, InstantiationBoundingBoxLimit, NvrhiTemplateArgs, instantiationBoundingBoxLimit);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, Compressed1.Header, NvrhiTemplateArgs, compressed1Header);
+    NVRHI_ASSERT_SAME_MEMBER(DxrTemplateArgs, Compressed1.ReservedPadding, NvrhiTemplateArgs, reservedPadding2);
+
+    using DxrInstantiateArgs = D3D12_RTAS_OPERATION_INSTANTIATE_CLUSTER_TEMPLATES_ARGS;
+    using NvrhiInstantiateArgs = rt::cluster::dxr::IndirectInstantiateTemplateArgs;
+    static_assert(sizeof(DxrInstantiateArgs) == sizeof(NvrhiInstantiateArgs));
+    NVRHI_ASSERT_SAME_MEMBER(DxrInstantiateArgs, GeometryIndexOffset, NvrhiInstantiateArgs, geometryIndexOffset);
+    NVRHI_ASSERT_SAME_MEMBER(DxrInstantiateArgs, ClusterIdOffset, NvrhiInstantiateArgs, clusterIdOffset);
+    NVRHI_ASSERT_SAME_MEMBER(DxrInstantiateArgs, ClusterTemplate, NvrhiInstantiateArgs, clusterTemplate);
+    NVRHI_ASSERT_SAME_MEMBER(DxrInstantiateArgs, VertexBuffer.StartAddress, NvrhiInstantiateArgs, vertexBuffer.startAddress);
+    NVRHI_ASSERT_SAME_MEMBER(DxrInstantiateArgs, VertexBuffer.StrideInBytes, NvrhiInstantiateArgs, vertexBuffer.strideInBytes);
+
+    using DxrBlasArgs = D3D12_RTAS_OPERATION_BUILD_BLAS_FROM_CLAS_ARGS;
+    using NvrhiBlasArgs = rt::cluster::IndirectArgs;
+    static_assert(sizeof(DxrBlasArgs) == sizeof(NvrhiBlasArgs));
+    NVRHI_ASSERT_SAME_MEMBER(DxrBlasArgs, ClasAddressCount, NvrhiBlasArgs, clusterCount);
+    NVRHI_ASSERT_SAME_MEMBER(DxrBlasArgs, ClasAddressStride, NvrhiBlasArgs, clusterAddressStride);
+    NVRHI_ASSERT_SAME_MEMBER(DxrBlasArgs, ClasAddressArray, NvrhiBlasArgs, clusterAddresses);
+
+    static_assert(sizeof(rt::cluster::dxr::OperationSize) == sizeof(UINT64));
+    static_assert(D3D12_RAYTRACING_CLAS_BYTE_ALIGNMENT == rt::cluster::kClasByteAlignment);
+    static_assert(D3D12_RAYTRACING_MAXIMUM_GEOMETRY_INDEX == rt::cluster::kMaxGeometryIndex);
+    static_assert(uint32_t(rt::cluster::ClusterFlags::AllowDisableOMMs) == D3D12_RTAS_CLUSTER_OPERATION_CLAS_FLAG_ALLOW_DISABLE_OMMS);
+    static_assert(uint32_t(rt::cluster::ClusterFlags::DisallowDataAccess) == D3D12_RTAS_CLUSTER_OPERATION_CLAS_FLAG_DISALLOW_DATA_ACCESS);
+#undef NVRHI_ASSERT_SAME_MEMBER
+
     static D3D12_RTAS_OPERATION_MODE translateClusterOperationMode(const rt::cluster::OperationMode& mode)
     {
         switch (mode)
