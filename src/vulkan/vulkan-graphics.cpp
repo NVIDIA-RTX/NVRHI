@@ -433,7 +433,11 @@ namespace nvrhi::vulkan
             .setPTessellationState(nullptr);
 
         if (pso->desc.shadingRateState.enabled)
+        {
             renderingInfo.setPNext(&shadingRateState);
+            // Required to draw with a fragment shading rate attachment under dynamic rendering.
+            pipelineInfo.flags |= vk::PipelineCreateFlagBits::eRenderingFragmentShadingRateAttachmentKHR;
+        }
 
         auto tessellationState = vk::PipelineTessellationStateCreateInfo();
 
@@ -510,6 +514,9 @@ namespace nvrhi::vulkan
             .setPColorAttachments(framebuffer->colorAttachments.data())
             .setPDepthAttachment(framebuffer->depthAttachment.imageView ? &framebuffer->depthAttachment : nullptr)
             .setPStencilAttachment(framebuffer->stencilAttachment.imageView ? &framebuffer->stencilAttachment : nullptr);
+
+        if (framebuffer->shadingRateAttachment.imageView)
+            renderingInfo.setPNext(&framebuffer->shadingRateAttachment);
         
         m_CurrentCmdBuf->cmdBuf.beginRendering(renderingInfo);
         m_CurrentCmdBuf->referencedResources.push_back(framebuffer);
