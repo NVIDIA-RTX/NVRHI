@@ -113,15 +113,15 @@ The following extensions are supported:
 - Conservative Raster and other rasterizer features (Maxwell+)
 - HLSL Extensions through a fake UAV slot (see [this blog post](https://developer.nvidia.com/unlocking-gpu-intrinsics-hlsl))
 
-## DXR clusters Support (Preview)
+## DXR Clusters Support (Preview)
 
-Set the `NVRHI_D3D12_WITH_DXRCLUSTER` CMake variable to `ON` to run cluster operations on DX12 through native DXR clusters instead of NVAPI. This requires:
+Set the `NVRHI_D3D12_WITH_DXRCLUSTER` CMake variable to `ON` to add native DXR cluster operations to the DX12 backend. Using them requires:
 
 - Exactly version 1.722 of the preview D3D12 Agility SDK, with `NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR` set to its include directory; later previews are not guaranteed to work with NVIDIA driver 621.01
 - Windows Developer Mode, and a call to `nvrhi::d3d12::enableExperimentalFeatures()` before the D3D12 device is created
 - NVIDIA driver 621.01 or later
 
-With DXR clusters enabled, the NVAPI cluster operations are compiled out. DX12 indirect arguments use the `nvrhi::rt::cluster::dxr` layouts, while Vulkan keeps the `nvrhi::rt::cluster::nv` layouts. The cluster argument structs in `nvrhiHLSL.h` have 16-bit fields, so shaders that include it must be compiled with `-enable-16bit-types`.
+When NVRHI is also built with `NVRHI_WITH_NVAPI` and an NVAPI SDK that supports cluster operations, the NVAPI cluster operations stay compiled in, and each device picks one API at creation: DXR clusters when the device supports it, NVAPI otherwise. Without NVAPI cluster support, a device without DXR clusters has no cluster operations. `d3d12::DeviceDesc::enableDxrClusters` and `enableNvapiClusters` remove an API from that choice. Query `Feature::RayTracingClusters` with a `RayTracingClustersFeatureInfo` to find the API in use: DXR clusters read the `nvrhi::rt::cluster::dxr` argument layouts and writes 64-bit result sizes, while NVAPI and Vulkan use the `nvrhi::rt::cluster::nv` layouts and 32-bit sizes. The cluster argument structs in `nvrhiHLSL.h` have 16-bit fields, so HLSL only declares them when compiled with `-enable-16bit-types`.
 
 ## RTXMU Integration
 

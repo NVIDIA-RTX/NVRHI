@@ -117,8 +117,8 @@ namespace nvrhi
 
             // These structs have 16-bit fields, so HLSL only declares them with -enable-16bit-types.
 #if defined(__cplusplus) || defined(__HLSL_ENABLE_16_BIT) || defined(__SLANG__)
-            // Callers pick the layout that matches the device: nv for NVAPI and Vulkan, which are
-            // identical, and dxr for D3D12 built with NVRHI_D3D12_WITH_DXRCLUSTER.
+            // Callers pick the layout that matches the device's ClusterApi: nv for NVAPI and
+            // Vulkan, which are identical, and dxr for DXR clusters.
             namespace nv
             {
                 // Clone of NVAPI_D3D12_RAYTRACING_ACCELERATION_STRUCTURE_MULTI_INDIRECT_TRIANGLE_CLUSTER_ARGS
@@ -182,7 +182,7 @@ namespace nvrhi
                 using OperationSize = uint32_t;
             } // namespace nv
 
-            // DXR clusters layouts.
+            // DXR cluster layouts.
             namespace dxr
             {
                 // Clone of D3D12_RTAS_OPERATION_BUILD_CLAS_FROM_TRIANGLES_ARGS. Field names match
@@ -248,7 +248,7 @@ namespace nvrhi
                     GpuVirtualAddressAndStride vertexBuffer;         // Vertex buffer with stride to use to fetch the vertex positions used for instantiation
                 };
 
-                // DXR clusters reports result sizes as UINT64.
+                // DXR clusters report result sizes as UINT64.
                 using OperationSize = uint64_t;
             } // namespace dxr
 #endif

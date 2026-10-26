@@ -52,8 +52,8 @@ endif()
 
 if(NVRHI_WITH_DX12)
     option(NVRHI_D3D12_WITH_DXR12_OPACITY_MICROMAP "Use D3D12 native Opacity Micromaps from DXR 1.2" OFF)
-    option(NVRHI_D3D12_WITH_DXRCLUSTER "Use D3D12 native DXR clusters and SM 6.10 (requires the preview Agility SDK)" OFF)
-    set(NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR "" CACHE PATH "Include directory of the preview Agility SDK providing the DXR clusters headers")
+    option(NVRHI_D3D12_WITH_DXRCLUSTER "Add D3D12 native DXR cluster operations beside the NVAPI ones (requires the preview Agility SDK)" OFF)
+    set(NVRHI_D3D12_DXRCLUSTER_INCLUDE_DIR "" CACHE PATH "Include directory of the preview Agility SDK providing the DXR cluster headers")
     option(NVRHI_FETCH_DIRECTX_HEADERS "Fetch DirectX-Headers when building the D3D12 backend and no external targets are provided" ON)
     set(NVRHI_DIRECTX_HEADERS_GIT_REPOSITORY "https://github.com/microsoft/DirectX-Headers.git" CACHE STRING "DirectX-Headers git repository used by NVRHI_FETCH_DIRECTX_HEADERS")
     set(NVRHI_DIRECTX_HEADERS_GIT_TAG "v1.717.0-preview" CACHE STRING "DirectX-Headers git tag or commit used by NVRHI_FETCH_DIRECTX_HEADERS")
@@ -456,9 +456,8 @@ if (NVRHI_WITH_VULKAN)
     target_compile_definitions(${nvrhi_vulkan_target} PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WITH_AFTERMATH}>)
 endif()
 
-# NVRHI_D3D12_WITH_DXRCLUSTER selects the d3d12.h that nvrhi/d3d12.h includes and the cluster
-# argument layouts the validation layer checks, so every nvrhi library and every consumer
-# has to be compiled with the same value.
+# NVRHI_D3D12_WITH_DXRCLUSTER selects the d3d12.h that nvrhi/d3d12.h includes, so every nvrhi
+# library and every consumer has to be compiled with the same value.
 set(_nvrhi_targets nvrhi ${nvrhi_d3d11_target} ${nvrhi_d3d12_target} ${nvrhi_vulkan_target})
 list(REMOVE_DUPLICATES _nvrhi_targets)
 foreach(_nvrhi_target IN LISTS _nvrhi_targets)

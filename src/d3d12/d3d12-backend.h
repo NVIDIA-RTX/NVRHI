@@ -62,15 +62,15 @@
 #define NVRHI_WITH_NVAPI_DISPLACEMENT_MICROMAP (0)
 #endif
 
-// If using the DXR clusters cluster operations, ignore the NVAPI ones
-#if NVRHI_D3D12_WITH_DXRCLUSTER
-    #define NVRHI_WITH_NVAPI_CLUSTERS (0)
-#else
+// Independent of NVRHI_D3D12_WITH_DXRCLUSTER: with both, the device picks one at runtime (see ClusterApi).
+#ifndef NVRHI_WITH_NVAPI_CLUSTERS
     #if NVRHI_D3D12_WITH_NVAPI && defined(NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER)
         #define NVRHI_WITH_NVAPI_CLUSTERS (1)
     #else
         #define NVRHI_WITH_NVAPI_CLUSTERS (0)
     #endif
+#elif NVRHI_WITH_NVAPI_CLUSTERS && !(NVRHI_D3D12_WITH_NVAPI && defined(NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER))
+    #error "NVRHI_WITH_NVAPI_CLUSTERS needs NVAPI with the cluster operations"
 #endif
 
 // Line-Swept Spheres were added in NVAPI SDK 572.18
@@ -82,7 +82,7 @@
 
 // Preview 717 exposes cooperative-vector feature queries (D3D12_FEATURE_COOPERATIVE_VECTOR).
 // Preview 720+ uses the Linear Algebra feature tier and matrix-operation queries when DIRECT3D_LINEAR_ALGEBRA is defined.
-// The DXR clusters preview SDK (D3D12_PREVIEW_SDK_VERSION 722) renamed the linear-algebra
+// The DXR cluster preview SDK (D3D12_PREVIEW_SDK_VERSION 722) renamed the linear-algebra
 // feature enums, so keep cooperative vectors out of that configuration until they are ported.
 #if !NVRHI_D3D12_WITH_DXRCLUSTER && ((D3D12_PREVIEW_SDK_VERSION == 717) || (defined(DIRECT3D_LINEAR_ALGEBRA) && D3D12_PREVIEW_SDK_VERSION >= 720))
 #define NVRHI_D3D12_WITH_COOP_VECTOR_COMMON (1)
@@ -1372,6 +1372,7 @@ namespace nvrhi::d3d12
         bool GetOpacityMicromapSupported() const { return m_OpacityMicromapSupported; }
         bool GetLinearSweptSpheresSupported( ) const { return m_LinearSweptSpheresSupported; }
         bool GetEnhancedBarriersSupported() const { return m_EnhancedBarriersSupported; }
+        ClusterApi GetClusterApi() const { return m_ClusterApi; }
 
     private:
         Context m_Context;
@@ -1391,7 +1392,7 @@ namespace nvrhi::d3d12
         bool m_MeshletsSupported = false;
         bool m_VariableRateShadingSupported = false;
         bool m_OpacityMicromapSupported = false;
-        bool m_RayTracingClustersSupported = false;
+        ClusterApi m_ClusterApi = ClusterApi::None;
         bool m_RayTracingPositionFetchSupported = false;
         bool m_LinearSweptSpheresSupported = false;
         bool m_SpheresSupported = false;

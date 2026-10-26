@@ -1920,13 +1920,11 @@ namespace nvrhi::validation
             }
         }
 
-        // DXR clusters treats a zero stride as tightly packed, Vulkan rejects it, and NVAPI leaves it
+        // DXR clusters treat a zero stride as tightly packed, Vulkan rejects it, and NVAPI leaves it
         // unspecified, so every array needs an explicit stride of at least its element size.
-#if NVRHI_D3D12_WITH_DXRCLUSTER
-        const bool dxr = m_Device->getGraphicsAPI() == GraphicsAPI::D3D12;
-#else
-        const bool dxr = false;
-#endif
+        RayTracingClustersFeatureInfo clustersInfo = {};
+        m_Device->queryFeatureSupport(Feature::RayTracingClusters, &clustersInfo, sizeof(clustersInfo));
+        const bool dxr = clustersInfo.api == ClusterApi::Dxr;
 
         size_t argSize = sizeof(GpuVirtualAddress);
         switch (desc.params.type)

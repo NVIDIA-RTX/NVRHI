@@ -31,7 +31,9 @@
 // The preview Agility SDK ships its headers flat, without the DirectX-Headers directx/ prefix.
 #if NVRHI_D3D12_WITH_DXRCLUSTER
 #include <d3d12.h>
-// The DXR clusters cluster structs and the SM 6.10 cluster intrinsics are built against this preview.
+// Exactly 1.722, not "1.722 or later": the DXR cluster structs and the experimental SM 6.10
+// opcodes match this preview, and later previews are not guaranteed to work with
+// NVIDIA driver 621.01.
 #if !defined(D3D12_PREVIEW_SDK_VERSION) || D3D12_PREVIEW_SDK_VERSION != 722
 #error "NVRHI_D3D12_WITH_DXRCLUSTER requires exactly the 1.722 preview D3D12 Agility SDK; later previews are not guaranteed to work with NVIDIA driver 621.01"
 #endif
@@ -148,6 +150,12 @@ namespace nvrhi::d3d12
         // Enable D3D12 Enhanced Barriers, if supported.
         // Use device->queryFeatureSupport(Feature::EnhancedBarriers) to query the actual support.
         bool enableEnhancedBarriers = true;
+
+        // Cluster operations run through the DXR cluster API when it is enabled and supported, otherwise
+        // through NVAPI. Query Feature::RayTracingClusters with RayTracingClustersFeatureInfo
+        // for the API in use.
+        bool enableDxrClusters = true;
+        bool enableNvapiClusters = true;
     };
 
     NVRHI_API DeviceHandle createDevice(const DeviceDesc& desc);

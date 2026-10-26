@@ -1080,10 +1080,12 @@ namespace nvrhi::d3d12
     NVRHI_ASSERT_SAME_MEMBER(NvapiBlasArgs, clusterCount, NvBlasArgs, clusterCount);
     NVRHI_ASSERT_SAME_MEMBER(NvapiBlasArgs, reserved, NvBlasArgs, clusterAddressStride);
     NVRHI_ASSERT_SAME_MEMBER(NvapiBlasArgs, clusterVAs, NvBlasArgs, clusterAddresses);
-#undef NVRHI_ASSERT_SAME_MEMBER
 
-    // --- Helpers ---
     DEFINE_ENUM_FLAG_OPERATORS(NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAGS);
+
+namespace nvapi_clusters
+{
+    // --- Helpers ---
     static NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAGS translateClusterOperationFlags(const rt::cluster::OperationFlags& flags)
     {
         NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAGS result = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_NONE;
@@ -1217,10 +1219,11 @@ namespace nvrhi::d3d12
 
         return inputs;
     }
+} // namespace nvapi_clusters
 #endif // #if NVRHI_WITH_NVAPI_CLUSTERS
 
 #if NVRHI_D3D12_WITH_DXRCLUSTER
-    using DxrClasArgs = D3D12_RTAS_OPERATION_BUILD_CLAS_FROM_TRIANGLES_ARGS;
+    using DxrClasArgs =D3D12_RTAS_OPERATION_BUILD_CLAS_FROM_TRIANGLES_ARGS;
     using NvrhiClasArgs = rt::cluster::dxr::IndirectTriangleClasArgs;
     static_assert(sizeof(DxrClasArgs) == sizeof(NvrhiClasArgs));
     NVRHI_ASSERT_SAME_MEMBER(DxrClasArgs, ClusterID, NvrhiClasArgs, clusterId);
@@ -1289,8 +1292,12 @@ namespace nvrhi::d3d12
     static_assert(D3D12_RAYTRACING_MAXIMUM_GEOMETRY_INDEX == rt::cluster::kMaxGeometryIndex);
     static_assert(uint32_t(rt::cluster::ClusterFlags::AllowDisableOMMs) == D3D12_RTAS_CLUSTER_OPERATION_CLAS_FLAG_ALLOW_DISABLE_OMMS);
     static_assert(uint32_t(rt::cluster::ClusterFlags::DisallowDataAccess) == D3D12_RTAS_CLUSTER_OPERATION_CLAS_FLAG_DISALLOW_DATA_ACCESS);
+#endif // #if NVRHI_D3D12_WITH_DXRCLUSTER
 #undef NVRHI_ASSERT_SAME_MEMBER
 
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+namespace dxr_clusters
+{
     static D3D12_RTAS_OPERATION_MODE translateClusterOperationMode(const rt::cluster::OperationMode& mode)
     {
         switch (mode)
@@ -1480,6 +1487,7 @@ namespace nvrhi::d3d12
             break;
         }
     }
+} // namespace dxr_clusters
 #endif // #if NVRHI_D3D12_WITH_DXRCLUSTER
 
     // --- Memory Requirements ---
@@ -1488,47 +1496,47 @@ namespace nvrhi::d3d12
     rt::cluster::OperationSizeInfo Device::getClusterOperationSizeInfo(const rt::cluster::OperationParams& params)
     {
 #if NVRHI_D3D12_WITH_DXRCLUSTER
-        if (!m_Context.deviceRaytracing2)
+        if (m_ClusterApi == ClusterApi::Dxr)
         {
-            m_Context.error("getClusterOperationSizeInfo requires ID3D12DeviceRaytracing2, which this device does not expose");
-            return rt::cluster::OperationSizeInfo{};
+            dxr_clusters::ClusterOperationInputs inputs;
+            dxr_clusters::translateClusterOperation(params, m_RayTracingPositionFetchSupported, inputs);
+
+            D3D12_RTAS_OPERATION_PREBUILD_INFO info = {};
+            m_Context.deviceRaytracing2->GetRTASOperationPrebuildInfo(&inputs.inputs, &info);
+
+            rt::cluster::OperationSizeInfo sizeInfo = {};
+            sizeInfo.resultMaxSizeInBytes = align(info.ResultDataMaxSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
+            sizeInfo.scratchSizeInBytes = align(info.ScratchDataSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
+            return sizeInfo;
         }
-
-        ClusterOperationInputs inputs;
-        translateClusterOperation(params, m_RayTracingPositionFetchSupported, inputs);
-
-        D3D12_RTAS_OPERATION_PREBUILD_INFO info = {};
-        m_Context.deviceRaytracing2->GetRTASOperationPrebuildInfo(&inputs.inputs, &info);
-
-        rt::cluster::OperationSizeInfo sizeInfo = {};
-        sizeInfo.resultMaxSizeInBytes = align(info.ResultDataMaxSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
-        sizeInfo.scratchSizeInBytes = align(info.ScratchDataSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
-        return sizeInfo;
-#elif NVRHI_WITH_NVAPI_CLUSTERS
-        NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS inputs = translateClusterOperation(params);
-
-        NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO info = {};
-
-        NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS d3d12Params;
-        d3d12Params.version = NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER;
-        d3d12Params.pInput = &inputs;
-        d3d12Params.pInfo = &info;
-
-        NvAPI_Status result = NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo(m_Context.device5, &d3d12Params);
-        if (result != NVAPI_OK)
+#endif
+#if NVRHI_WITH_NVAPI_CLUSTERS
+        if (m_ClusterApi == ClusterApi::Nv)
         {
-            m_Context.error("NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo failed with NvAPI_Status " + std::to_string(result));
+            NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INPUTS inputs = nvapi_clusters::translateClusterOperation(params);
+
+            NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO info = {};
+
+            NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS d3d12Params;
+            d3d12Params.version = NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER;
+            d3d12Params.pInput = &inputs;
+            d3d12Params.pInfo = &info;
+
+            NvAPI_Status result = NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo(m_Context.device5, &d3d12Params);
+            if (result != NVAPI_OK)
+            {
+                m_Context.error("NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo failed with NvAPI_Status " + std::to_string(result));
+            }
+
+            rt::cluster::OperationSizeInfo sizeInfo = {};
+            sizeInfo.resultMaxSizeInBytes = align(info.resultDataMaxSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
+            sizeInfo.scratchSizeInBytes = align(info.scratchDataSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
+            return sizeInfo;
         }
-        
-        rt::cluster::OperationSizeInfo sizeInfo = {};
-        sizeInfo.resultMaxSizeInBytes = align(info.resultDataMaxSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
-        sizeInfo.scratchSizeInBytes = align(info.scratchDataSizeInBytes, uint64_t(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
-        return sizeInfo;
-#else
+#endif
         (void)params;
         utils::NotSupported();
         return rt::cluster::OperationSizeInfo{};
-#endif
     }
 
 
@@ -1747,7 +1755,7 @@ namespace nvrhi::d3d12
 #endif
 #if NVRHI_D3D12_WITH_DXRCLUSTER
         // Without this, traversing a cluster BLAS fails with PIPELINE_INCOMPATIBLE_WITH_AS.
-        if (m_RayTracingClustersSupported && desc.allowClusters)
+        if (m_ClusterApi == ClusterApi::Dxr && desc.allowClusters)
         {
             d3dPipelineConfig.Flags |= D3D12_RAYTRACING_PIPELINE_FLAG_ALLOW_CLUSTERED_GEOMETRY;
         }
@@ -2809,63 +2817,71 @@ namespace nvrhi::d3d12
     void CommandList::executeMultiIndirectClusterOperation(const rt::cluster::OperationDesc& desc)
     {
 #if NVRHI_D3D12_WITH_DXRCLUSTER
-        if (!m_ActiveCommandList->commandListRaytracing2)
+        if (m_Device->GetClusterApi() == ClusterApi::Dxr)
         {
-            m_Context.error("executeMultiIndirectClusterOperation requires ID3D12CommandListRaytracing2, which this command list does not expose");
+            if (!m_ActiveCommandList->commandListRaytracing2)
+            {
+                m_Context.error("executeMultiIndirectClusterOperation requires ID3D12CommandListRaytracing2, which this command list does not expose");
+                return;
+            }
+
+            ClusterOperationAddresses addresses;
+            if (!prepareClusterOperation(desc, addresses))
+                return;
+
+            dxr_clusters::ClusterOperationInputs inputs;
+            dxr_clusters::translateClusterOperation(desc.params, m_Device->queryFeatureSupport(Feature::RayTracingPositionFetch), inputs);
+
+            D3D12_RTAS_BATCHED_OPERATION_DATA batchedData = {};
+            batchedData.AddressResolutionFlags = D3D12_RTAS_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
+            batchedData.BatchScratchData = addresses.scratch;
+            batchedData.IndirectArgumentArray = addresses.args;
+            // The operation count is the minimum of this value and MaxArgCount; leaving it
+            // null uses MaxArgCount alone.
+            batchedData.IndirectArgumentArraySize = addresses.argCount;
+            batchedData.ResultAddressArray = addresses.destinations;
+            batchedData.BatchResultData = addresses.results;
+            batchedData.ResultSizeArray = addresses.sizes;
+
+            D3D12_RTAS_OPERATION_DESC operationDesc = {};
+            operationDesc.Inputs = inputs.inputs;
+            operationDesc.pBatchedOperationData = &batchedData;
+
+            m_ActiveCommandList->commandListRaytracing2->ExecuteIndirectRTASOperations(
+                1, &operationDesc, D3D12_EXECUTE_INDIRECT_RTAS_OPERATIONS_FLAG_NONE);
             return;
         }
-
-        ClusterOperationAddresses addresses;
-        if (!prepareClusterOperation(desc, addresses))
-            return;
-
-        ClusterOperationInputs inputs;
-        translateClusterOperation(desc.params, m_Device->queryFeatureSupport(Feature::RayTracingPositionFetch), inputs);
-
-        D3D12_RTAS_BATCHED_OPERATION_DATA batchedData = {};
-        batchedData.AddressResolutionFlags = D3D12_RTAS_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
-        batchedData.BatchScratchData = addresses.scratch;
-        batchedData.IndirectArgumentArray = addresses.args;
-        // The operation count is the minimum of this value and MaxArgCount; leaving it
-        // null uses MaxArgCount alone.
-        batchedData.IndirectArgumentArraySize = addresses.argCount;
-        batchedData.ResultAddressArray = addresses.destinations;
-        batchedData.BatchResultData = addresses.results;
-        batchedData.ResultSizeArray = addresses.sizes;
-
-        D3D12_RTAS_OPERATION_DESC operationDesc = {};
-        operationDesc.Inputs = inputs.inputs;
-        operationDesc.pBatchedOperationData = &batchedData;
-
-        m_ActiveCommandList->commandListRaytracing2->ExecuteIndirectRTASOperations(
-            1, &operationDesc, D3D12_EXECUTE_INDIRECT_RTAS_OPERATIONS_FLAG_NONE);
-#elif NVRHI_WITH_NVAPI_CLUSTERS
-        ClusterOperationAddresses addresses;
-        if (!prepareClusterOperation(desc, addresses))
-            return;
-
-        NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC d3d12Desc = {};
-        d3d12Desc.inputs = translateClusterOperation(desc.params);
-        d3d12Desc.addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
-        d3d12Desc.indirectArgCount = addresses.argCount;
-        d3d12Desc.indirectArgArray = addresses.args;
-        d3d12Desc.batchScratchData = addresses.scratch;
-        d3d12Desc.destinationAddressArray = addresses.destinations;
-        d3d12Desc.batchResultData = addresses.results;
-        d3d12Desc.resultSizeArray = addresses.sizes;
-
-        NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS clusterOpParams = {};
-        clusterOpParams.version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER;
-        clusterOpParams.pDesc = &d3d12Desc;
-
-        NvAPI_Status result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(m_ActiveCommandList->commandList4, &clusterOpParams);
-        if (result != NVAPI_OK)
+#endif
+#if NVRHI_WITH_NVAPI_CLUSTERS
+        if (m_Device->GetClusterApi() == ClusterApi::Nv)
         {
-            m_Context.error("NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed with NvAPI_Status " + std::to_string(result));
+            ClusterOperationAddresses addresses;
+            if (!prepareClusterOperation(desc, addresses))
+                return;
+
+            NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_DESC d3d12Desc = {};
+            d3d12Desc.inputs = nvapi_clusters::translateClusterOperation(desc.params);
+            d3d12Desc.addressResolutionFlags = NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_ADDRESS_RESOLUTION_FLAG_NONE;
+            d3d12Desc.indirectArgCount = addresses.argCount;
+            d3d12Desc.indirectArgArray = addresses.args;
+            d3d12Desc.batchScratchData = addresses.scratch;
+            d3d12Desc.destinationAddressArray = addresses.destinations;
+            d3d12Desc.batchResultData = addresses.results;
+            d3d12Desc.resultSizeArray = addresses.sizes;
+
+            NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS clusterOpParams = {};
+            clusterOpParams.version = NVAPI_RAYTRACING_EXECUTE_MULTI_INDIRECT_CLUSTER_OPERATION_PARAMS_VER;
+            clusterOpParams.pDesc = &d3d12Desc;
+
+            NvAPI_Status result = NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation(m_ActiveCommandList->commandList4, &clusterOpParams);
+            if (result != NVAPI_OK)
+            {
+                m_Context.error("NvAPI_D3D12_RaytracingExecuteMultiIndirectClusterOperation failed with NvAPI_Status " + std::to_string(result));
+            }
+            return;
         }
-#else
+#endif
         (void)desc;
         utils::NotSupported();
-#endif
     }
 } // namespace nvrhi::d3d12

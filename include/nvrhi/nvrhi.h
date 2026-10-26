@@ -1927,11 +1927,11 @@ namespace nvrhi
                 uint32_t minPositionTruncateBitCount = 0;
 
                 // Maximum number of opacity micromaps referenced by a single CLAS. Must be non-zero
-                // when OperationFlags::AllowOMM is set. Only DXR clusters reads it.
+                // when OperationFlags::AllowOMM is set. Only the DXR cluster API reads it.
                 uint32_t maxOpacityMicromapIndexCount = 0;
 
-                // Index format of every argument's index buffer. Only DXR clusters reads it: NVAPI and
-                // Vulkan take indexFormat from each argument, so a DXR clusters operation cannot mix
+                // Index format of every argument's index buffer. Only the DXR cluster API reads it: NVAPI and
+                // Vulkan take indexFormat from each argument, so a DXR cluster operation cannot mix
                 // index formats across arguments.
                 OperationIndexFormat indexFormat = OperationIndexFormat::IndexFormat32bit;
             };
@@ -1969,7 +1969,7 @@ namespace nvrhi
                 // Input Resources
                 IBuffer* inIndirectArgCountBuffer = nullptr;            // Buffer containing the number of AS to build, instantiate, or move
                 uint64_t inIndirectArgCountOffsetInBytes = 0;           // Offset (in bytes) to where the count is in the inIndirectArgCountBuffer 
-                IBuffer* inIndirectArgsBuffer = nullptr;                // Buffer of descriptor array of format IndirectTriangleClasArgs, IndirectTriangleTemplateArgs, IndirectInstantiateTemplateArgs (nv:: or dxr:: layout, per device)
+                IBuffer* inIndirectArgsBuffer = nullptr;                // Buffer of descriptor array of format IndirectTriangleClasArgs, IndirectTriangleTemplateArgs, IndirectInstantiateTemplateArgs (nv:: or dxr:: layout, see ClusterApi)
                 uint64_t inIndirectArgsOffsetInBytes = 0;               // Offset (in bytes) to where the descriptor array starts inIndirectArgsBuffer
 
                 // In/Out Resources
@@ -3227,6 +3227,21 @@ namespace nvrhi
     {
         uint32_t minWaveLaneCount;
         uint32_t maxWaveLaneCount;
+    };
+
+    // The API that runs a device's cluster operations, named after the argument layouts it
+    // reads: Nv for NVAPI and VK_NV_cluster_acceleration_structure (rt::cluster::nv), Dxr
+    // for DXR clusters (rt::cluster::dxr).
+    enum class ClusterApi : uint8_t
+    {
+        None,
+        Nv,
+        Dxr
+    };
+
+    struct RayTracingClustersFeatureInfo
+    {
+        ClusterApi api;
     };
 
     // IMessageCallback should be implemented by the application.

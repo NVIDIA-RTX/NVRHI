@@ -432,51 +432,6 @@ namespace nvrhi::d3d12
 #endif
 #endif // #if NVRHI_WITH_NVAPI_OPACITY_MICROMAPS
 
-#if NVRHI_D3D12_WITH_DXRCLUSTER
-        if (!m_Context.deviceRaytracing2)
-        {
-            m_Context.info("DXR clusters: the device does not expose ID3D12DeviceRaytracing2");
-        }
-        else
-        {
-            D3D12_FEATURE_DATA_D3D12_OPTIONS_RAYTRACING2 raytracing2 = {};
-            const HRESULT hr = m_Context.device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2, &raytracing2, sizeof(raytracing2));
-            if (FAILED(hr))
-            {
-                std::stringstream ss;
-                ss << "DXR clusters: CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2) failed with HRESULT 0x"
-                   << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned int>(hr);
-                m_Context.info(ss.str());
-            }
-            else
-            {
-                m_RayTracingClustersSupported = raytracing2.ClustersAndPTLASSupported;
-                if (!m_RayTracingClustersSupported)
-                    m_Context.info("DXR clusters: the driver reports ClustersAndPTLASSupported = FALSE");
-            }
-        }
-
-        {
-            // TriangleObjectPositions() is a Shader Model 6.10 intrinsic.
-            D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_10 };
-            m_RayTracingPositionFetchSupported = m_RayTracingSupported
-                && SUCCEEDED(m_Context.device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel)))
-                && shaderModel.HighestShaderModel >= D3D_SHADER_MODEL_6_10;
-        }
-#else
-        // NvRtTriangleObjectPositions() is an NVAPI HLSL extension.
-        m_RayTracingPositionFetchSupported = m_RayTracingSupported && m_HlslExtensionsSupported;
-#endif // #if NVRHI_D3D12_WITH_DXRCLUSTER
-
-#if NVRHI_WITH_NVAPI_CLUSTERS
-        if (m_NvapiIsInitialized)
-        {
-            NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAPS clusterCaps = NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_NONE;
-            NvAPI_D3D12_GetRaytracingCaps(m_Context.device5, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_CLUSTER_OPERATIONS, &clusterCaps, sizeof(clusterCaps));
-            m_RayTracingClustersSupported = clusterCaps == NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_STANDARD;
-        }
-#endif // #if NVRHI_WITH_NVAPI_CLUSTERS
-
 #if NVRHI_WITH_NVAPI_LSS
         if (m_NvapiIsInitialized)
         {
@@ -489,9 +444,67 @@ namespace nvrhi::d3d12
             m_SpheresSupported = spheresCaps == NVAPI_D3D12_RAYTRACING_SPHERES_CAP_STANDARD;
         }
 #endif // #if NVRHI_WITH_NVAPI_LSS
+#endif // #if NVRHI_D3D12_WITH_NVAPI
+
+        // DXR clusters take precedence when both cluster APIs are available.
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        if (desc.enableDxrClusters)
+        {
+            if (!m_Context.deviceRaytracing2)
+            {
+                m_Context.info("DXR clusters: the device does not expose ID3D12DeviceRaytracing2");
+            }
+            else
+            {
+                D3D12_FEATURE_DATA_D3D12_OPTIONS_RAYTRACING2 raytracing2 = {};
+                const HRESULT hr = m_Context.device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2, &raytracing2, sizeof(raytracing2));
+                if (FAILED(hr))
+                {
+                    std::stringstream ss;
+                    ss << "DXR clusters: CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2) failed with HRESULT 0x"
+                       << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned int>(hr);
+                    m_Context.info(ss.str());
+                }
+                else if (!raytracing2.ClustersAndPTLASSupported)
+                {
+                    m_Context.info("DXR clusters: the driver reports ClustersAndPTLASSupported = FALSE");
+                }
+                else
+                {
+                    m_ClusterApi = ClusterApi::Dxr;
+                }
+            }
+        }
+#endif // #if NVRHI_D3D12_WITH_DXRCLUSTER
+
+#if NVRHI_WITH_NVAPI_CLUSTERS
+        if (m_ClusterApi == ClusterApi::None && desc.enableNvapiClusters && m_NvapiIsInitialized)
+        {
+            NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAPS clusterCaps = NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_NONE;
+            NvAPI_D3D12_GetRaytracingCaps(m_Context.device5, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_CLUSTER_OPERATIONS, &clusterCaps, sizeof(clusterCaps));
+            if (clusterCaps == NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_STANDARD)
+                m_ClusterApi = ClusterApi::Nv;
+        }
+#endif // #if NVRHI_WITH_NVAPI_CLUSTERS
+
+        if (m_ClusterApi == ClusterApi::Dxr)
+        {
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+            // TriangleObjectPositions() is a Shader Model 6.10 intrinsic.
+            D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_10 };
+            m_RayTracingPositionFetchSupported = m_RayTracingSupported
+                && SUCCEEDED(m_Context.device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel)))
+                && shaderModel.HighestShaderModel >= D3D_SHADER_MODEL_6_10;
+#endif
+        }
+        else
+        {
+            // NvRtTriangleObjectPositions() is an NVAPI HLSL extension.
+            m_RayTracingPositionFetchSupported = m_RayTracingSupported && m_HlslExtensionsSupported;
+        }
 
 #if NVRHI_WITH_NVAPI_OPACITY_MICROMAP || NVRHI_WITH_NVAPI_CLUSTERS || NVRHI_WITH_NVAPI_LSS
-        if (m_OpacityMicromapSupported || m_RayTracingClustersSupported || m_LinearSweptSpheresSupported || m_SpheresSupported)
+        if (m_OpacityMicromapSupported || m_ClusterApi == ClusterApi::Nv || m_LinearSweptSpheresSupported || m_SpheresSupported)
         {
             NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS params = {};
             params.version = NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS_VER;
@@ -500,7 +513,7 @@ namespace nvrhi::d3d12
             params.flags |= (m_OpacityMicromapSupported ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_OMM_SUPPORT : 0);
         #endif
         #if NVRHI_WITH_NVAPI_CLUSTERS
-            params.flags |= (m_RayTracingClustersSupported ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT : 0);
+            params.flags |= (m_ClusterApi == ClusterApi::Nv ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT : 0);
         #endif
         #if NVRHI_WITH_NVAPI_LSS
             params.flags |= (m_LinearSweptSpheresSupported ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_LSS_SUPPORT : 0);
@@ -510,8 +523,6 @@ namespace nvrhi::d3d12
             assert(res == NVAPI_OK);
         }
 #endif
-
-#endif // #if NVRHI_D3D12_WITH_NVAPI
 
 #if NVRHI_WITH_AFTERMATH
         if (desc.aftermathEnabled)
@@ -842,7 +853,14 @@ namespace nvrhi::d3d12
         case Feature::RayTracingOpacityMicromap:
             return m_OpacityMicromapSupported;
         case Feature::RayTracingClusters:
-            return m_RayTracingClustersSupported;
+            if (pInfo)
+            {
+                if (infoSize == sizeof(RayTracingClustersFeatureInfo))
+                    reinterpret_cast<RayTracingClustersFeatureInfo*>(pInfo)->api = m_ClusterApi;
+                else
+                    utils::NotSupported();
+            }
+            return m_ClusterApi != ClusterApi::None;
         case Feature::RayTracingPositionFetch:
             return m_RayTracingPositionFetchSupported;
         case Feature::RayQuery:

@@ -2061,7 +2061,7 @@ namespace nvrhi::validation
 
         if (validateClasParams)
         {
-            // The four-component formats other than R10G10B10A2 have no DXR clusters equivalent.
+            // The four-component formats other than R10G10B10A2 have no DXR cluster equivalent.
             nvrhi::Format vertexFormat = params.clas.vertexFormat;
             const bool validVertexFormat =
                 (vertexFormat == nvrhi::Format::RGB32_FLOAT)

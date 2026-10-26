@@ -373,6 +373,16 @@ namespace nvrhi::vulkan
             return false;
         }
         case Feature::RayTracingClusters:
+            if (pInfo)
+            {
+                if (infoSize == sizeof(RayTracingClustersFeatureInfo))
+                {
+                    reinterpret_cast<RayTracingClustersFeatureInfo*>(pInfo)->api =
+                        m_Context.extensions.NV_cluster_acceleration_structure ? ClusterApi::Nv : ClusterApi::None;
+                }
+                else
+                    utils::NotSupported();
+            }
             return m_Context.extensions.NV_cluster_acceleration_structure;
         case Feature::RayTracingPositionFetch:
             return m_Context.extensions.KHR_ray_tracing_position_fetch;
