@@ -36,12 +36,14 @@ namespace nvrhi::d3d12
 {
     void Context::error(const std::string& message) const
     {
-        messageCallback->message(MessageSeverity::Error, message.c_str());
+        if (messageCallback)
+            messageCallback->message(MessageSeverity::Error, message.c_str());
     }
 
     void Context::info(const std::string& message) const
     {
-        messageCallback->message(MessageSeverity::Info, message.c_str());
+        if (messageCallback)
+            messageCallback->message(MessageSeverity::Info, message.c_str());
     }
 
 #if NVRHI_D3D12_WITH_NVAPI
@@ -110,6 +112,29 @@ namespace nvrhi::d3d12
     {
         Device* device = new Device(desc);
         return DeviceHandle::Create(device);
+    }
+
+    bool enableExperimentalFeatures([[maybe_unused]] IMessageCallback* messageCallback)
+    {
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        static const IID features[] = { D3D12ExperimentalShaderModels, D3D12RaytracingPreview };
+
+        const HRESULT hr = D3D12EnableExperimentalFeatures(_countof(features), features, nullptr, nullptr);
+
+        if (FAILED(hr) && messageCallback)
+        {
+            std::stringstream ss;
+            ss << "D3D12EnableExperimentalFeatures (DXR clusters / SM 6.10) failed with HRESULT 0x"
+               << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned int>(hr);
+            if (hr == E_NOINTERFACE)
+                ss << " - Windows Developer Mode is most likely disabled";
+            messageCallback->message(MessageSeverity::Warning, ss.str().c_str());
+        }
+
+        return SUCCEEDED(hr);
+#else
+        return false;
+#endif
     }
 
     DeviceResources::DeviceResources(const Context& context, const DeviceDesc& desc)
@@ -262,6 +287,10 @@ namespace nvrhi::d3d12
 #endif
         }
 
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        m_Context.device->QueryInterface(IID_PPV_ARGS(&m_Context.deviceRaytracing2));
+#endif
+
 #if NVRHI_D3D12_WITH_COOP_VECTOR_COMMON
         if (SUCCEEDED(m_Context.device->QueryInterface(&m_Context.devicePreview)))
         {
@@ -403,15 +432,6 @@ namespace nvrhi::d3d12
 #endif
 #endif // #if NVRHI_WITH_NVAPI_OPACITY_MICROMAPS
 
-#if NVRHI_WITH_NVAPI_CLUSTERS
-        if (m_NvapiIsInitialized)
-        {
-            NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAPS clusterCaps = NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_NONE;
-            NvAPI_D3D12_GetRaytracingCaps(m_Context.device5, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_CLUSTER_OPERATIONS, &clusterCaps, sizeof(clusterCaps));
-            m_RayTracingClustersSupported = clusterCaps == NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_STANDARD;
-        }
-#endif // #if NVRHI_WITH_NVAPI_CLUSTERS
-
 #if NVRHI_WITH_NVAPI_LSS
         if (m_NvapiIsInitialized)
         {
@@ -424,9 +444,67 @@ namespace nvrhi::d3d12
             m_SpheresSupported = spheresCaps == NVAPI_D3D12_RAYTRACING_SPHERES_CAP_STANDARD;
         }
 #endif // #if NVRHI_WITH_NVAPI_LSS
+#endif // #if NVRHI_D3D12_WITH_NVAPI
+
+        // DXR clusters take precedence when both cluster APIs are available.
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+        if (desc.enableDxrClusters)
+        {
+            if (!m_Context.deviceRaytracing2)
+            {
+                m_Context.info("DXR clusters: the device does not expose ID3D12DeviceRaytracing2");
+            }
+            else
+            {
+                D3D12_FEATURE_DATA_D3D12_OPTIONS_RAYTRACING2 raytracing2 = {};
+                const HRESULT hr = m_Context.device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2, &raytracing2, sizeof(raytracing2));
+                if (FAILED(hr))
+                {
+                    std::stringstream ss;
+                    ss << "DXR clusters: CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_RAYTRACING2) failed with HRESULT 0x"
+                       << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned int>(hr);
+                    m_Context.info(ss.str());
+                }
+                else if (!raytracing2.ClustersAndPTLASSupported)
+                {
+                    m_Context.info("DXR clusters: the driver reports ClustersAndPTLASSupported = FALSE");
+                }
+                else
+                {
+                    m_ClusterApi = ClusterApi::Dxr;
+                }
+            }
+        }
+#endif // #if NVRHI_D3D12_WITH_DXRCLUSTER
+
+#if NVRHI_WITH_NVAPI_CLUSTERS
+        if (m_ClusterApi == ClusterApi::None && desc.enableNvapiClusters && m_NvapiIsInitialized)
+        {
+            NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAPS clusterCaps = NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_NONE;
+            NvAPI_D3D12_GetRaytracingCaps(m_Context.device5, NVAPI_D3D12_RAYTRACING_CAPS_TYPE_CLUSTER_OPERATIONS, &clusterCaps, sizeof(clusterCaps));
+            if (clusterCaps == NVAPI_D3D12_RAYTRACING_CLUSTER_OPERATIONS_CAP_STANDARD)
+                m_ClusterApi = ClusterApi::Nv;
+        }
+#endif // #if NVRHI_WITH_NVAPI_CLUSTERS
+
+        if (m_ClusterApi == ClusterApi::Dxr)
+        {
+#if NVRHI_D3D12_WITH_DXRCLUSTER
+            // TriangleObjectPositions() is a Shader Model 6.10 intrinsic.
+            D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_10 };
+            m_RayTracingPositionFetchSupported = m_RayTracingSupported
+                && SUCCEEDED(m_Context.device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &shaderModel, sizeof(shaderModel)))
+                && shaderModel.HighestShaderModel >= D3D_SHADER_MODEL_6_10;
+#endif
+        }
+        else
+        {
+            // NvRtTriangleObjectPositions() is an NVAPI HLSL extension.
+            m_RayTracingPositionFetchSupported = m_RayTracingSupported && m_HlslExtensionsSupported;
+        }
 
 #if NVRHI_WITH_NVAPI_OPACITY_MICROMAP || NVRHI_WITH_NVAPI_CLUSTERS || NVRHI_WITH_NVAPI_LSS
-        if (m_OpacityMicromapSupported || m_RayTracingClustersSupported || m_LinearSweptSpheresSupported || m_SpheresSupported)
+        if (m_OpacityMicromapSupported || m_ClusterApi == ClusterApi::Nv || m_LinearSweptSpheresSupported || m_SpheresSupported)
         {
             NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS params = {};
             params.version = NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS_VER;
@@ -435,7 +513,7 @@ namespace nvrhi::d3d12
             params.flags |= (m_OpacityMicromapSupported ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_OMM_SUPPORT : 0);
         #endif
         #if NVRHI_WITH_NVAPI_CLUSTERS
-            params.flags |= (m_RayTracingClustersSupported ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT : 0);
+            params.flags |= (m_ClusterApi == ClusterApi::Nv ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT : 0);
         #endif
         #if NVRHI_WITH_NVAPI_LSS
             params.flags |= (m_LinearSweptSpheresSupported ? NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_LSS_SUPPORT : 0);
@@ -445,8 +523,6 @@ namespace nvrhi::d3d12
             assert(res == NVAPI_OK);
         }
 #endif
-
-#endif // #if NVRHI_D3D12_WITH_NVAPI
 
 #if NVRHI_WITH_AFTERMATH
         if (desc.aftermathEnabled)
@@ -777,12 +853,16 @@ namespace nvrhi::d3d12
         case Feature::RayTracingOpacityMicromap:
             return m_OpacityMicromapSupported;
         case Feature::RayTracingClusters:
-            return m_RayTracingClustersSupported;
+            if (pInfo)
+            {
+                if (infoSize == sizeof(RayTracingClustersFeatureInfo))
+                    reinterpret_cast<RayTracingClustersFeatureInfo*>(pInfo)->api = m_ClusterApi;
+                else
+                    utils::NotSupported();
+            }
+            return m_ClusterApi != ClusterApi::None;
         case Feature::RayTracingPositionFetch:
-            // Exposed through the NVAPI HLSL extensions (NvRtTriangleObjectPositions),
-            // which ride the shader extension UAV slot -- so it needs both ray
-            // tracing and an initialized NVAPI shader-extension path.
-            return m_RayTracingSupported && m_HlslExtensionsSupported;
+            return m_RayTracingPositionFetchSupported;
         case Feature::RayQuery:
             return m_TraceRayInlineSupported;
         case Feature::FastGeometryShader:

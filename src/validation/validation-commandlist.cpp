@@ -1920,6 +1920,49 @@ namespace nvrhi::validation
             }
         }
 
+        // DXR clusters treat a zero stride as tightly packed, Vulkan rejects it, and NVAPI leaves it
+        // unspecified, so every array needs an explicit stride of at least its element size.
+        RayTracingClustersFeatureInfo clustersInfo = {};
+        m_Device->queryFeatureSupport(Feature::RayTracingClusters, &clustersInfo, sizeof(clustersInfo));
+        const bool dxr = clustersInfo.api == ClusterApi::Dxr;
+
+        size_t argSize = sizeof(GpuVirtualAddress);
+        switch (desc.params.type)
+        {
+        case rt::cluster::OperationType::ClasBuild:
+            argSize = dxr ? sizeof(rt::cluster::dxr::IndirectTriangleClasArgs) : sizeof(rt::cluster::nv::IndirectTriangleClasArgs);
+            break;
+        case rt::cluster::OperationType::ClasBuildTemplates:
+            argSize = dxr ? sizeof(rt::cluster::dxr::IndirectTriangleTemplateArgs) : sizeof(rt::cluster::nv::IndirectTriangleTemplateArgs);
+            break;
+        case rt::cluster::OperationType::ClasInstantiateTemplates:
+            argSize = dxr ? sizeof(rt::cluster::dxr::IndirectInstantiateTemplateArgs) : sizeof(rt::cluster::nv::IndirectInstantiateTemplateArgs);
+            break;
+        case rt::cluster::OperationType::BlasBuild:
+            argSize = sizeof(rt::cluster::IndirectArgs);
+            break;
+        default:
+            break;
+        }
+        const size_t sizeSize = dxr ? sizeof(rt::cluster::dxr::OperationSize) : sizeof(rt::cluster::nv::OperationSize);
+
+        auto validateStride = [this](IBuffer* buffer, size_t elementSize, const char* name)
+        {
+            if (!buffer || buffer->getDesc().structStride >= elementSize)
+                return true;
+
+            std::stringstream ss;
+            ss << "executeMultiIndirectClusterOperation: '" << name << "' has structStride " << buffer->getDesc().structStride
+               << ", which is less than its element size of " << elementSize << " bytes";
+            error(ss.str());
+            return false;
+        };
+
+        if (!validateStride(desc.inIndirectArgsBuffer, argSize, "inIndirectArgsBuffer")
+            || !validateStride(desc.inOutAddressesBuffer, sizeof(GpuVirtualAddress), "inOutAddressesBuffer")
+            || !validateStride(desc.outSizesBuffer, sizeSize, "outSizesBuffer"))
+            return;
+
         m_CommandList->executeMultiIndirectClusterOperation(desc);
     }
 
