@@ -775,7 +775,7 @@ namespace nvrhi::d3d12
         Queue* m_Queue;
         size_t m_DefaultChunkSize = 0;
         uint64_t m_MemoryLimit = 0;
-        uint64_t m_AllocatedMemory = 0;
+        uint64_t m_AllocatedMemory = 0; // TODO: This value currently has no effect.
         uint64_t m_ChunkBytes = 0;
         bool m_IsScratchBuffer = false;
 
