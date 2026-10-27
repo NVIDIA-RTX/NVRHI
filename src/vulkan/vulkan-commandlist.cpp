@@ -58,6 +58,14 @@ namespace nvrhi::vulkan
         }
     }
 
+    CommandListMemoryUsage CommandList::getInternalMemoryUsage() const
+    {
+        CommandListMemoryUsage usage;
+        usage.scratchBytes = m_ScratchManager->getChunkBytes();
+        usage.uploadBytes = m_UploadManager->getChunkBytes();
+        return usage;
+    }
+
     void CommandList::open()
     {
         m_CurrentCmdBuf = m_Device->getQueue(m_CommandListParameters.queueType)->getOrCreateCommandBuffer();

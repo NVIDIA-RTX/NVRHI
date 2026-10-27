@@ -121,6 +121,7 @@ namespace nvrhi::vulkan
                 return false;
 
             m_CurrentChunk = CreateChunk(sizeToAllocate);
+            m_ChunkBytes += m_CurrentChunk->bufferSize;
         }
 
         m_CurrentChunk->version = currentVersion;

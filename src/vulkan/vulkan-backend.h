@@ -1024,11 +1024,14 @@ namespace nvrhi::vulkan
         bool suballocateBuffer(uint64_t size, Buffer** pBuffer, uint64_t* pOffset, void** pCpuVA, uint64_t currentVersion, uint32_t alignment = 256);
         void submitChunks(uint64_t currentVersion, uint64_t submittedVersion);
 
+        uint64_t getChunkBytes() const { return m_ChunkBytes; }
+
     private:
         Device* m_Device;
         uint64_t m_DefaultChunkSize = 0;
         uint64_t m_MemoryLimit = 0;
-        uint64_t m_AllocatedMemory = 0;
+        uint64_t m_AllocatedMemory = 0; // TODO: This value currently has no effect.
+        uint64_t m_ChunkBytes = 0;
         bool m_IsScratchBuffer = false;
 
         std::list<std::shared_ptr<BufferChunk>> m_ChunkPool;
@@ -1330,6 +1333,7 @@ namespace nvrhi::vulkan
 
         IDevice* getDevice() override { return m_Device; }
         const CommandListParameters& getDesc() override { return m_CommandListParameters; }
+        [[nodiscard]] CommandListMemoryUsage getInternalMemoryUsage() const override;
 
         TrackedCommandBufferPtr getCurrentCmdBuf() const { return m_CurrentCmdBuf; }
 

@@ -224,6 +224,8 @@ namespace nvrhi::d3d12
             else
             {
                 m_CurrentChunk = createChunk(sizeToAllocate);
+                if (m_CurrentChunk)
+                    m_ChunkBytes += m_CurrentChunk->bufferSize;
             }
         }
 

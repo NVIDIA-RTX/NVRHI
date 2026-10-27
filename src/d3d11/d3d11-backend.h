@@ -381,6 +381,7 @@ namespace nvrhi::d3d11
 
         IDevice* getDevice() override { return m_Device; }
         const CommandListParameters& getDesc() override { return m_Desc; }
+        [[nodiscard]] CommandListMemoryUsage getInternalMemoryUsage() const override { return CommandListMemoryUsage(); }
 
     private:
         const Context& m_Context;

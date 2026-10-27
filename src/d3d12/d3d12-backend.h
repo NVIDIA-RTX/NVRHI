@@ -782,12 +782,15 @@ namespace nvrhi::d3d12
 
         void submitChunks(uint64_t currentVersion, uint64_t submittedVersion);
 
+        uint64_t getChunkBytes() const { return m_ChunkBytes; }
+
     private:
         const Context& m_Context;
         Queue* m_Queue;
         size_t m_DefaultChunkSize = 0;
         uint64_t m_MemoryLimit = 0;
-        uint64_t m_AllocatedMemory = 0;
+        uint64_t m_AllocatedMemory = 0; // TODO: This value currently has no effect.
+        uint64_t m_ChunkBytes = 0;
         bool m_IsScratchBuffer = false;
 
         std::list<std::shared_ptr<BufferChunk>> m_ChunkPool;
@@ -1124,6 +1127,7 @@ namespace nvrhi::d3d12
 
         nvrhi::IDevice* getDevice() override;
         const CommandListParameters& getDesc() override { return m_Desc; }
+        [[nodiscard]] CommandListMemoryUsage getInternalMemoryUsage() const override;
 
         // D3D12 specific methods
 
