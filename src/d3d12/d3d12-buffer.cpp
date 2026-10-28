@@ -89,6 +89,11 @@ namespace nvrhi::d3d12
         if (buffer->desc.canHaveUAVs)
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
+        if (d.isAccelStructStorage)
+        {
+            resourceDesc.Flags |= D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE;
+        }
+
         if (d.isVirtual)
         {
             return BufferHandle::Create(buffer);
@@ -127,11 +132,6 @@ namespace nvrhi::d3d12
                 heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
                 initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
                 break;
-        }
-
-        if (d.isAccelStructStorage)
-        {
-            resourceDesc.Flags |= D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE;
         }
 
         // Allow readback buffers to be used as resolve destination targets
