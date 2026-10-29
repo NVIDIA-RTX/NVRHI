@@ -98,19 +98,18 @@ namespace nvrhi::vulkan
         if (bindingUpdateMask == 0)
             bindingUpdateMask = arrayDifferenceMask(newBindings, oldBindings);
 
-        if (bindingUpdateMask != 0)
+        // Also when no set changed: those with UAV bindings need a barrier after the previous
+        // draw or dispatch.
+        for (size_t i = 0; i < newBindings.size(); i++)
         {
-            for (size_t i = 0; i < newBindings.size(); i++)
-            {
-                if (newBindings[i]->getDesc() == nullptr) // Ignore bindless sets
-                    continue;
+            if (newBindings[i]->getDesc() == nullptr) // Ignore bindless sets
+                continue;
 
-                BindingSet const* bindingSet = checked_cast<BindingSet const*>(newBindings[i]);
+            BindingSet const* bindingSet = checked_cast<BindingSet const*>(newBindings[i]);
 
-                bool const updateThisSet = (bindingUpdateMask & (1u << i)) != 0;
-                if (updateThisSet || bindingSet->hasUavBindings) // UAV bindings may place UAV barriers on the same binding set
-                    setResourceStatesForBindingSet(newBindings[i]);
-            }
+            bool const updateThisSet = (bindingUpdateMask & (1u << i)) != 0;
+            if (updateThisSet || bindingSet->hasUavBindings) // UAV bindings may place UAV barriers on the same binding set
+                setResourceStatesForBindingSet(newBindings[i]);
         }
     }
 
