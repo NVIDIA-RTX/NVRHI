@@ -272,10 +272,15 @@ namespace nvrhi::vulkan
                     offset3D.y = tiledTextureCoordinate.y * tileHeight;
                     offset3D.z = tiledTextureCoordinate.z * tileHeight;
 
+                    // Up to the level's edge at most: Vulkan wants whole tiles, or ones ending there.
+                    const uint32_t mipWidth = std::max(imageInfo.extent.width >> tiledTextureCoordinate.mipLevel, 1u);
+                    const uint32_t mipHeight = std::max(imageInfo.extent.height >> tiledTextureCoordinate.mipLevel, 1u);
+                    const uint32_t mipDepth = std::max(imageInfo.extent.depth >> tiledTextureCoordinate.mipLevel, 1u);
+
                     vk::Extent3D extent3D;
-                    extent3D.width = tiledTextureRegion.width * tileWidth;
-                    extent3D.height = tiledTextureRegion.height * tileHeight;
-                    extent3D.depth = tiledTextureRegion.depth * tileDepth;
+                    extent3D.width = std::min(tiledTextureRegion.width * tileWidth, mipWidth - uint32_t(offset3D.x));
+                    extent3D.height = std::min(tiledTextureRegion.height * tileHeight, mipHeight - uint32_t(offset3D.y));
+                    extent3D.depth = std::min(tiledTextureRegion.depth * tileDepth, mipDepth - uint32_t(offset3D.z));
 
                     sparseImageMemoryBinds.push_back(vk::SparseImageMemoryBind()
                         .setSubresource(subresource)
