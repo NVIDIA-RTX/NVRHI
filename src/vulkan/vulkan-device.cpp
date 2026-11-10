@@ -88,6 +88,9 @@ namespace nvrhi::vulkan
             { VK_KHR_RAY_TRACING_POSITION_FETCH_EXTENSION_NAME, &m_Context.extensions.KHR_ray_tracing_position_fetch },
             { VK_EXT_MESH_SHADER_EXTENSION_NAME, &m_Context.extensions.EXT_mesh_shader },
             { VK_NV_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, &m_Context.extensions.NV_ray_tracing_invocation_reorder },
+#ifdef VK_EXT_ray_tracing_invocation_reorder
+            { VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME, &m_Context.extensions.EXT_ray_tracing_invocation_reorder },
+#endif
             { VK_NV_CLUSTER_ACCELERATION_STRUCTURE_EXTENSION_NAME, &m_Context.extensions.NV_cluster_acceleration_structure },
             { VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME, &m_Context.extensions.EXT_mutable_descriptor_type },
             { VK_NV_COOPERATIVE_VECTOR_EXTENSION_NAME, &m_Context.extensions.NV_cooperative_vector },
@@ -132,6 +135,9 @@ namespace nvrhi::vulkan
         vk::PhysicalDeviceFragmentShadingRatePropertiesKHR shadingRateProperties;
         vk::PhysicalDeviceOpacityMicromapPropertiesEXT opacityMicromapProperties;
         vk::PhysicalDeviceRayTracingInvocationReorderPropertiesNV nvRayTracingInvocationReorderProperties;
+#ifdef VK_EXT_ray_tracing_invocation_reorder
+        vk::PhysicalDeviceRayTracingInvocationReorderPropertiesEXT extRayTracingInvocationReorderProperties;
+#endif
         vk::PhysicalDeviceClusterAccelerationStructurePropertiesNV nvClusterAccelerationStructureProperties;
         vk::PhysicalDeviceCooperativeVectorPropertiesNV nvCoopVecProperties;
         vk::PhysicalDeviceSubgroupProperties subgroupProperties;
@@ -178,6 +184,14 @@ namespace nvrhi::vulkan
             pNext = &nvRayTracingInvocationReorderProperties;
         }
 
+#ifdef VK_EXT_ray_tracing_invocation_reorder
+        if (m_Context.extensions.EXT_ray_tracing_invocation_reorder)
+        {
+            extRayTracingInvocationReorderProperties.pNext = pNext;
+            pNext = &extRayTracingInvocationReorderProperties;
+        }
+#endif
+
         if (m_Context.extensions.NV_cluster_acceleration_structure)
         {
             nvClusterAccelerationStructureProperties.pNext = pNext;
@@ -201,6 +215,9 @@ namespace nvrhi::vulkan
         m_Context.shadingRateProperties = shadingRateProperties;
         m_Context.opacityMicromapProperties = opacityMicromapProperties;
         m_Context.nvRayTracingInvocationReorderProperties = nvRayTracingInvocationReorderProperties;
+#ifdef VK_EXT_ray_tracing_invocation_reorder
+        m_Context.extRayTracingInvocationReorderProperties = extRayTracingInvocationReorderProperties;
+#endif
         m_Context.subgroupProperties = subgroupProperties;
         m_Context.nvClusterAccelerationStructureProperties = nvClusterAccelerationStructureProperties;
         m_Context.coopVecProperties = nvCoopVecProperties;
@@ -366,6 +383,15 @@ namespace nvrhi::vulkan
             return m_Context.extensions.KHR_ray_query;
         case Feature::ShaderExecutionReordering:
         {
+            // VK_EXT_ray_tracing_invocation_reorder is the promoted version of the NV extension. Either one provides
+            // the feature; which of the two SPIR-V instruction sets the shaders may use follows from the extension
+            // that the application enabled on the device.
+#ifdef VK_EXT_ray_tracing_invocation_reorder
+            if (m_Context.extensions.EXT_ray_tracing_invocation_reorder)
+            {
+                return vk::RayTracingInvocationReorderModeEXT::eReorder == m_Context.extRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
+            }
+#endif
             if (m_Context.extensions.NV_ray_tracing_invocation_reorder)
             {
                 return vk::RayTracingInvocationReorderModeNV::eReorder == m_Context.nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;

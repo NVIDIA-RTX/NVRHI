@@ -150,6 +150,7 @@ namespace nvrhi::vulkan
             bool EXT_conservative_rasterization = false;
             bool EXT_opacity_micromap = false;
             bool NV_ray_tracing_invocation_reorder = false;
+            bool EXT_ray_tracing_invocation_reorder = false;
             bool NV_cluster_acceleration_structure = false;
             bool EXT_mutable_descriptor_type = false;
             bool EXT_debug_utils = false;
@@ -169,6 +170,9 @@ namespace nvrhi::vulkan
         vk::PhysicalDeviceFragmentShadingRatePropertiesKHR shadingRateProperties;
         vk::PhysicalDeviceOpacityMicromapPropertiesEXT opacityMicromapProperties;
         vk::PhysicalDeviceRayTracingInvocationReorderPropertiesNV nvRayTracingInvocationReorderProperties;
+#ifdef VK_EXT_ray_tracing_invocation_reorder // Added in Vulkan headers 1.4.333, later than the minimum version above
+        vk::PhysicalDeviceRayTracingInvocationReorderPropertiesEXT extRayTracingInvocationReorderProperties;
+#endif
         vk::PhysicalDeviceClusterAccelerationStructurePropertiesNV nvClusterAccelerationStructureProperties;
         vk::PhysicalDeviceFragmentShadingRateFeaturesKHR shadingRateFeatures;
         vk::PhysicalDeviceCooperativeVectorFeaturesNV coopVecFeatures;
