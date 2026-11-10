@@ -1146,6 +1146,16 @@ namespace nvrhi
         None
     };
 
+    // How lines are drawn: Vulkan's line rasterization modes (VK_EXT_line_rasterization). D3D has
+    // RasterState's multisampleEnable and antialiasedLineEnable for them instead.
+    enum class LineRasterizationMode : uint8_t
+    {
+        Default,
+        Rectangular,
+        Bresenham,
+        Smooth
+    };
+
     struct RasterState
     {
         RasterFillMode fillMode = RasterFillMode::Solid;
@@ -1202,6 +1212,20 @@ namespace nvrhi
         constexpr RasterState& enableQuadFill() { quadFillEnable = true; return *this; }
         constexpr RasterState& disableQuadFill() { quadFillEnable = false; return *this; }
         constexpr RasterState& setSamplePositions(const char* x, const char* y, int count) { for (int i = 0; i < count; i++) { samplePositionsX[i] = x[i]; samplePositionsY[i] = y[i]; } return *this; }
+
+        // Vulkan only: how lines are rasterized (other than Default: VK_EXT_line_rasterization, the
+        // device having the mode's feature), their width (past 1: the wideLines feature) and their
+        // stipple (VK_EXT_line_rasterization and the mode's stippled feature): each bit of the
+        // pattern, from the lowest, a run of lineStippleFactor pixels drawn if it is set.
+        LineRasterizationMode lineRasterizationMode = LineRasterizationMode::Default;
+        float lineWidth = 1.f;
+        bool lineStippleEnable = false;
+        uint32_t lineStippleFactor = 1;
+        uint16_t lineStipplePattern = 0xffff;
+
+        constexpr RasterState& setLineRasterizationMode(LineRasterizationMode value) { lineRasterizationMode = value; return *this; }
+        constexpr RasterState& setLineWidth(float value) { lineWidth = value; return *this; }
+        constexpr RasterState& setLineStipple(bool enable, uint32_t factor, uint16_t pattern) { lineStippleEnable = enable; lineStippleFactor = factor; lineStipplePattern = pattern; return *this; }
     };
 
     //////////////////////////////////////////////////////////////////////////

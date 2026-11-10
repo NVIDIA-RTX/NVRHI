@@ -344,6 +344,19 @@ namespace nvrhi::vulkan
 			rasterizer.setPNext(&conservativeRasterState);
 		}
 
+        // Lines: their width, and their mode and stipple when not the defaults.
+        rasterizer.setLineWidth(rasterState.lineWidth);
+        auto lineState = vk::PipelineRasterizationLineStateCreateInfoEXT()
+            .setLineRasterizationMode(vk::LineRasterizationModeEXT(rasterState.lineRasterizationMode))
+            .setStippledLineEnable(rasterState.lineStippleEnable)
+            .setLineStippleFactor(rasterState.lineStippleFactor)
+            .setLineStipplePattern(rasterState.lineStipplePattern);
+        if (rasterState.lineRasterizationMode != LineRasterizationMode::Default || rasterState.lineStippleEnable)
+        {
+            lineState.setPNext(rasterizer.pNext);
+            rasterizer.setPNext(&lineState);
+        }
+
         auto multisample = vk::PipelineMultisampleStateCreateInfo()
                             .setRasterizationSamples(vk::SampleCountFlagBits(fbinfo.sampleCount))
                             .setAlphaToCoverageEnable(blendState.alphaToCoverageEnable);
