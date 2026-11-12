@@ -350,8 +350,27 @@ namespace nvrhi::vulkan
     {
         switch (feature)  // NOLINT(clang-diagnostic-switch-enum)
         {
+        // Keep legacy queries working without deprecation warnings inside the backend.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         case Feature::DeferredCommandLists:
+        case Feature::ConstantBufferRanges:
             return true;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         case Feature::RayTracingAccelStruct:
             return m_Context.extensions.KHR_acceleration_structure;
         case Feature::RayTracingPipeline:
@@ -411,8 +430,6 @@ namespace nvrhi::vulkan
             return (m_Queues[uint32_t(CommandQueue::Compute)] != nullptr);
         case Feature::CopyQueue:
             return (m_Queues[uint32_t(CommandQueue::Copy)] != nullptr);
-        case Feature::ConstantBufferRanges:
-            return true;
         case Feature::WaveLaneCountMinMax:
             if (m_Context.subgroupProperties.subgroupSize == 0)
                 return false;

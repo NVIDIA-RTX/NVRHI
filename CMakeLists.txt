@@ -40,8 +40,11 @@ option(NVRHI_WITH_RTXMU "Use RTXMU for acceleration structure management" OFF)
 option(NVRHI_WITH_AFTERMATH "Include Aftermath support (requires NSight Aftermath SDK)" OFF)
 
 cmake_dependent_option(NVRHI_WITH_NVAPI "Include NVAPI support (requires NVAPI SDK)" OFF "WIN32" OFF)
-cmake_dependent_option(NVRHI_WITH_DX11 "Build the NVRHI D3D11 backend" ON "WIN32" OFF)
 cmake_dependent_option(NVRHI_WITH_DX12 "Build the NVRHI D3D12 backend" ON "WIN32" OFF)
+
+if(NVRHI_WITH_DX11)
+    message(FATAL_ERROR "NVRHI_WITH_DX11=ON is no longer supported: the D3D11 backend has been removed. Use D3D12 or Vulkan; set DONUT_WITH_DX11=OFF for Donut builds.")
+endif()
 
 if(NVRHI_WITH_VULKAN)
     option(NVRHI_FETCH_VULKAN_HEADERS "Fetch Vulkan-Headers when building the Vulkan backend and no external targets are provided" ON)
@@ -240,23 +243,6 @@ set(src_validation
     src/validation/validation-device.cpp
     src/validation/validation-backend.h)
 
-set(include_d3d11
-    include/nvrhi/d3d11.h)
-set(src_d3d11
-    src/common/dxgi-format.h
-    src/common/dxgi-format.cpp
-    src/d3d11/d3d11-buffer.cpp
-    src/d3d11/d3d11-commandlist.cpp
-    src/d3d11/d3d11-compute.cpp
-    src/d3d11/d3d11-constants.cpp
-    src/d3d11/d3d11-backend.h
-    src/d3d11/d3d11-device.cpp
-    src/d3d11/d3d11-graphics.cpp
-    src/d3d11/d3d11-queries.cpp
-    src/d3d11/d3d11-resource-bindings.cpp
-    src/d3d11/d3d11-shader.cpp
-    src/d3d11/d3d11-texture.cpp)
-
 set(include_d3d12
     include/nvrhi/d3d12.h)
 set(src_d3d12
@@ -341,37 +327,6 @@ set_target_properties(nvrhi PROPERTIES FOLDER "NVRHI")
 target_compile_definitions(nvrhi PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WITH_AFTERMATH}>)
 
 # implementations
-
-if (NVRHI_WITH_DX11)
-    if (NVRHI_BUILD_SHARED)
-        set(nvrhi_d3d11_target nvrhi)
-
-        target_sources(${nvrhi_d3d11_target} PRIVATE
-            ${include_d3d11}
-            ${src_d3d11})
-    else()
-        set(nvrhi_d3d11_target nvrhi_d3d11)
-
-        add_library(${nvrhi_d3d11_target} STATIC
-            ${include_d3d11}
-            ${src_d3d11})
-
-        set_target_properties(${nvrhi_d3d11_target} PROPERTIES FOLDER "NVRHI")
-        target_include_directories(${nvrhi_d3d11_target} PRIVATE include)
-    endif()
-
-    target_link_libraries(${nvrhi_d3d11_target} PUBLIC d3d11 dxguid)
-
-    if (NVRHI_WITH_NVAPI)
-        target_link_libraries(${nvrhi_d3d11_target} PUBLIC nvapi)
-    endif()
-    target_compile_definitions(${nvrhi_d3d11_target} PRIVATE NVRHI_D3D11_WITH_NVAPI=$<BOOL:${NVRHI_WITH_NVAPI}>)
-
-    if (NVRHI_WITH_AFTERMATH)
-        target_link_libraries(${nvrhi_d3d11_target} PUBLIC aftermath)
-    endif()
-    target_compile_definitions(${nvrhi_d3d11_target} PRIVATE NVRHI_WITH_AFTERMATH=$<BOOL:${NVRHI_WITH_AFTERMATH}>)
-endif()
 
 if (NVRHI_WITH_DX12)
     if (NVRHI_BUILD_SHARED)
@@ -458,7 +413,7 @@ endif()
 
 # NVRHI_D3D12_WITH_DXRCLUSTER selects the d3d12.h that nvrhi/d3d12.h includes, so every nvrhi
 # library and every consumer has to be compiled with the same value.
-set(_nvrhi_targets nvrhi ${nvrhi_d3d11_target} ${nvrhi_d3d12_target} ${nvrhi_vulkan_target})
+set(_nvrhi_targets nvrhi ${nvrhi_d3d12_target} ${nvrhi_vulkan_target})
 list(REMOVE_DUPLICATES _nvrhi_targets)
 foreach(_nvrhi_target IN LISTS _nvrhi_targets)
     target_compile_definitions(${_nvrhi_target} PUBLIC NVRHI_D3D12_WITH_DXRCLUSTER=$<BOOL:${NVRHI_D3D12_WITH_DXRCLUSTER}>)
@@ -481,10 +436,6 @@ if (NVRHI_INSTALL)
         LIBRARY DESTINATION lib)
 
     if (NOT NVRHI_BUILD_SHARED)
-        if (NVRHI_WITH_DX11)
-            install(TARGETS ${nvrhi_d3d11_target} DESTINATION "lib" EXPORT "nvrhiTargets")
-        endif()
-
         if (NVRHI_WITH_DX12)
             install(TARGETS ${nvrhi_d3d12_target} DESTINATION "lib" EXPORT "nvrhiTargets")
         endif()

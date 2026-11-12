@@ -35,22 +35,13 @@ namespace nvrhi
     //
     // The encoding is chosen to minimize potential conflicts between implementations.
     // 0x00aabbcc, where:
-    //   aa is GAPI, 1 for D3D11, 2 for D3D12, 3 for VK
+    //   aa is GAPI, 1 reserved, 2 for D3D12, 3 for VK
     //   bb is layer, 0 for native GAPI objects, 1 for reference NVRHI backend, 2 for user-defined backends
     //   cc is a sequential number
 
     namespace ObjectTypes
     {
         constexpr ObjectType SharedHandle                           = 0x00000001;
-
-        constexpr ObjectType D3D11_Device                           = 0x00010001;
-        constexpr ObjectType D3D11_DeviceContext                    = 0x00010002;
-        constexpr ObjectType D3D11_Resource                         = 0x00010003;
-        constexpr ObjectType D3D11_Buffer                           = 0x00010004;
-        constexpr ObjectType D3D11_RenderTargetView                 = 0x00010005;
-        constexpr ObjectType D3D11_DepthStencilView                 = 0x00010006;
-        constexpr ObjectType D3D11_ShaderResourceView               = 0x00010007;
-        constexpr ObjectType D3D11_UnorderedAccessView              = 0x00010008;
 
         constexpr ObjectType D3D12_Device                           = 0x00020001;
         constexpr ObjectType D3D12_CommandQueue                     = 0x00020002;
@@ -115,7 +106,7 @@ namespace nvrhi
         virtual unsigned long Release() = 0;
         virtual unsigned long GetRefCount() = 0;
 
-        // Returns a native object or interface, for example ID3D11Device*, or nullptr if the requested interface is unavailable.
+        // Returns a native object or interface, for example ID3D12Device*, or nullptr if the requested interface is unavailable.
         // Does *not* AddRef the returned interface.
         virtual Object getNativeObject(ObjectType objectType) { (void)objectType; return nullptr; }
         

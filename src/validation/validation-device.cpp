@@ -609,9 +609,9 @@ namespace nvrhi::validation
         return m_Device->createSampler(d);
     }
 
-    InputLayoutHandle DeviceWrapper::createInputLayout(const VertexAttributeDesc* d, uint32_t attributeCount, IShader* vertexShader)
+    InputLayoutHandle DeviceWrapper::createInputLayout(const VertexAttributeDesc* d, uint32_t attributeCount)
     {
-        return m_Device->createInputLayout(d, attributeCount, vertexShader);
+        return m_Device->createInputLayout(d, attributeCount);
     }
 
     EventQueryHandle DeviceWrapper::createEventQuery()
@@ -828,7 +828,6 @@ namespace nvrhi::validation
         case ResourceType::RawBuffer_SRV:
         case ResourceType::RayTracingAccelStruct:
             location.type = GraphicsResourceType::SRV;
-            bindings.rangeSRV.add(location.slot);
             break;
 
         case ResourceType::Texture_UAV:
@@ -837,21 +836,18 @@ namespace nvrhi::validation
         case ResourceType::RawBuffer_UAV:
         case ResourceType::SamplerFeedbackTexture_UAV:
             location.type = GraphicsResourceType::UAV;
-            bindings.rangeUAV.add(location.slot);
             break;
 
         case ResourceType::ConstantBuffer:
         case ResourceType::VolatileConstantBuffer:
         case ResourceType::PushConstants:
             location.type = GraphicsResourceType::CB;
-            bindings.rangeCB.add(location.slot);
             if (type == ResourceType::VolatileConstantBuffer)
                 ++bindings.numVolatileCBs;
             break;
 
         case ResourceType::Sampler:
             location.type = GraphicsResourceType::Sampler;
-            bindings.rangeSampler.add(location.slot);
             break;
         
         case ResourceType::None:
@@ -875,12 +871,12 @@ namespace nvrhi::validation
     }
 
     static void FillBindingLayoutSummary(IMessageCallback* messageCallback, BindingLayoutDesc const& desc,
-        bool ignoreRegisterSpaces, BindingSummary& bindings, BindingLocationSet& duplicates)
+        BindingSummary& bindings, BindingLocationSet& duplicates)
     {
         for (const auto& item : desc.bindings)
         {
             BindingLocation location;
-            location.registerSpace = ignoreRegisterSpaces ? 0 : desc.registerSpace;
+            location.registerSpace = desc.registerSpace;
             location.slot = item.slot;
             uint32_t arraySize = item.getArraySize();
             for (location.arrayElement = 0; location.arrayElement < arraySize; ++location.arrayElement)
@@ -891,12 +887,12 @@ namespace nvrhi::validation
     }
     
     static void FillBindingSetSummary(IMessageCallback* messageCallback, BindingSetDesc const& desc,
-        bool ignoreRegisterSpaces, uint32_t registerSpace, BindingSummary& bindings, BindingLocationSet& duplicates)
+        uint32_t registerSpace, BindingSummary& bindings, BindingLocationSet& duplicates)
     {
         for (const auto& item : desc.bindings)
         {
             BindingLocation location;
-            location.registerSpace = ignoreRegisterSpaces ? 0 : registerSpace;
+            location.registerSpace = registerSpace;
             location.slot = item.slot;
             location.arrayElement = item.arrayElement;
             UpdateBindingSummaryWithLocation(messageCallback, item.type, location, bindings, duplicates);
@@ -969,11 +965,7 @@ namespace nvrhi::validation
         const int numBindingLayouts = int(bindingLayouts.size());
         bool anyErrors = false;
         bool anyDuplicateBindings = false;
-        bool anyOverlappingBindings = false;
         std::stringstream ssDuplicateBindings;
-        std::stringstream ssOverlappingBindings;
-
-        bool const ignoreRegisterSpaces = (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11);
 
         for (IShader* shader : shaders)
         {
@@ -1003,7 +995,7 @@ namespace nvrhi::validation
                                 continue;
 
                         BindingLocationSet duplicates;
-                        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc, ignoreRegisterSpaces,
+                        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc,
                             bindingsPerLayout[layoutIndex], duplicates);
 
                         // Layouts with duplicates should not have passed validation in createBindingLayout
@@ -1034,71 +1026,12 @@ namespace nvrhi::validation
 
                     anyDuplicateBindings = true;
                 }
-                else if (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11)
-                {
-                    // Check for overlapping layouts on DX11, because the backend implements each binding set as a single
-                    // call to a function like PSSetShaderResources. If binding sets overlap, a set with higher index
-                    // will overwrite bindings from the lower-indexed sets, even if they are on different slots.
-                    // Do this only when there are no duplicates, as with duplicates the layouts will always overlap.
-
-                    bool overlapSRV = false;
-                    bool overlapSampler = false;
-                    bool overlapUAV = false;
-                    bool overlapCB = false;
-
-                    for (int i = 0; i < numBindingLayouts - 1; i++)
-                    {
-                        const BindingSummary& set1 = bindingsPerLayout[i];
-
-                        for (int j = i + 1; j < numBindingLayouts; j++)
-                        {
-                            const BindingSummary& set2 = bindingsPerLayout[j];
-
-                            overlapSRV = overlapSRV || set1.rangeSRV.overlapsWith(set2.rangeSRV);
-                            overlapSampler = overlapSampler || set1.rangeSampler.overlapsWith(set2.rangeSampler);
-                            overlapUAV = overlapUAV || set1.rangeUAV.overlapsWith(set2.rangeUAV);
-                            overlapCB = overlapCB || set1.rangeCB.overlapsWith(set2.rangeCB);
-                        }
-                    }
-
-                    if (overlapSRV || overlapSampler || overlapUAV || overlapCB)
-                    {
-                        if (!anyOverlappingBindings)
-                            ssOverlappingBindings << "Binding layouts have overlapping register ranges:";
-
-                        ssOverlappingBindings << std::endl << utils::ShaderStageToString(stage) << ": ";
-
-                        bool first = true;
-                        auto append = [&first, &ssOverlappingBindings](bool value, const char* text)
-                        {
-                            if (value)
-                            {
-                                if (!first) ssOverlappingBindings << ", ";
-                                ssOverlappingBindings << text;
-                                first = false;
-                            }
-                        };
-
-                        append(overlapSRV, "SRV");
-                        append(overlapSampler, "Sampler");
-                        append(overlapUAV, "UAV");
-                        append(overlapCB, "CB");
-
-                        anyOverlappingBindings = true;
-                    }
-                }
             }
         }
 
         if (anyDuplicateBindings)
         {
             error(ssDuplicateBindings.str());
-            anyErrors = true;
-        }
-
-        if (anyOverlappingBindings)
-        {
-            error(ssOverlappingBindings.str());
             anyErrors = true;
         }
 
@@ -1330,12 +1263,11 @@ namespace nvrhi::validation
     {
         std::stringstream errorStream;
         bool anyErrors = false;
-        bool const ignoreRegisterSpaces = (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11);
 
         BindingSummary bindings;
         BindingLocationSet duplicates;
 
-        FillBindingLayoutSummary(m_MessageCallback, desc, ignoreRegisterSpaces, bindings, duplicates);
+        FillBindingLayoutSummary(m_MessageCallback, desc, bindings, duplicates);
 
         if (desc.visibility == ShaderType::None)
         {
@@ -1667,7 +1599,7 @@ namespace nvrhi::validation
             if (buffer == nullptr && binding.type != ResourceType::TypedBuffer_SRV && binding.type != ResourceType::TypedBuffer_UAV && m_Device->getGraphicsAPI() != GraphicsAPI::VULKAN)
             {
                 errorStream << "Null resource bindings are not allowed for buffers, unless it's a "
-                    "TypedBuffer_SRV or TypedBuffer_UAV type binding on DX11 or DX12." << std::endl;
+                    "TypedBuffer_SRV or TypedBuffer_UAV type binding on DX12." << std::endl;
                 return false;
             }
 
@@ -1745,12 +1677,6 @@ namespace nvrhi::validation
 
             if (binding.type == ResourceType::ConstantBuffer && !binding.range.isEntireBuffer(desc))
             {
-                if (!queryFeatureSupport(Feature::ConstantBufferRanges))
-                {
-                    errorStream << "Partial binding of constant buffers is not supported by the device (used for " << utils::DebugNameToString(desc.debugName) << ")";
-                    return false;
-                }
-
                 const BufferRange range = binding.range.resolve(desc);
                 if ((range.byteOffset % c_ConstantBufferOffsetSizeAlignment) != 0)
                 {
@@ -1838,18 +1764,17 @@ namespace nvrhi::validation
 
         std::stringstream errorStream;
         bool anyErrors = false;
-        bool const ignoreRegisterSpaces = (m_Device->getGraphicsAPI() == GraphicsAPI::D3D11);
 
         BindingSummary layoutBindings;
         BindingLocationSet layoutDuplicates;
 
-        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc, ignoreRegisterSpaces,
+        FillBindingLayoutSummary(m_MessageCallback, *layoutDesc,
             layoutBindings, layoutDuplicates);
 
         BindingSummary setBindings;
         BindingLocationSet setDuplicates;
 
-        FillBindingSetSummary(m_MessageCallback, desc, ignoreRegisterSpaces, layoutDesc->registerSpace,
+        FillBindingSetSummary(m_MessageCallback, desc, layoutDesc->registerSpace,
             setBindings, setDuplicates);
 
         BindingLocationSet declaredNotBound;
@@ -2253,7 +2178,7 @@ namespace nvrhi::validation
         if (commandList == nullptr)
             return nullptr;
 
-        CommandListWrapper* wrapper = new CommandListWrapper(this, commandList, params.enableImmediateExecution, params.queueType);
+        CommandListWrapper* wrapper = new CommandListWrapper(this, commandList, params.queueType);
         return CommandListHandle::Create(wrapper);
     }
     
@@ -2388,33 +2313,9 @@ namespace nvrhi::validation
         return m_Device->getAftermathCrashDumpHelper();
     }
 
-    void Range::add(uint32_t item)
-    {
-        min = std::min(min, item);
-        max = std::max(max, item);
-    }
-
-    bool Range::empty() const
-    {
-        return min > max;
-    }
-
-    bool Range::overlapsWith(const Range& other) const
-    {
-        return !empty() && !other.empty() && max >= other.min && min <= other.max;
-    }
-
     bool BindingSummary::any() const
     {
         return !locations.empty();
-    }
-
-    bool BindingSummary::overlapsWith(const BindingSummary& other) const
-    {
-        return rangeSRV.overlapsWith(other.rangeSRV)
-            || rangeSampler.overlapsWith(other.rangeSampler)
-            || rangeUAV.overlapsWith(other.rangeUAV)
-            || rangeCB.overlapsWith(other.rangeCB);
     }
 
     IResource* unwrapResource(IResource* resource)

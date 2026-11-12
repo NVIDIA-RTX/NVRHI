@@ -842,8 +842,27 @@ namespace nvrhi::d3d12
     {
         switch (feature)  // NOLINT(clang-diagnostic-switch-enum)
         {
+        // Keep legacy queries working without deprecation warnings inside the backend.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         case Feature::DeferredCommandLists:
+        case Feature::ConstantBufferRanges:
             return true;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         case Feature::SinglePassStereo:
             return m_SinglePassStereoSupported;
         case Feature::RayTracingAccelStruct:
@@ -894,8 +913,6 @@ namespace nvrhi::d3d12
         case Feature::CopyQueue:
             return (getQueue(CommandQueue::Copy) != nullptr);
         case Feature::ConservativeRasterization:
-            return true;
-        case Feature::ConstantBufferRanges:
             return true;
         case Feature::HeapDirectlyIndexed:
             return m_HeapDirectlyIndexedEnabled;

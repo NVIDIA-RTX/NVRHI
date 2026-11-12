@@ -112,4 +112,4 @@ namespace nvrhi
         return info;
     }
 
-} // namespace nvrhi::d3d11
+} // namespace nvrhi
