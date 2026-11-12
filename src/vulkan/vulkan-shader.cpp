@@ -133,10 +133,8 @@ namespace nvrhi::vulkan
         return ShaderHandle::Create(newShader);
     }
 
-    InputLayoutHandle Device::createInputLayout(const VertexAttributeDesc* attributeDesc, uint32_t attributeCount, IShader* vertexShader)
+    InputLayoutHandle Device::createInputLayout(const VertexAttributeDesc* attributeDesc, uint32_t attributeCount)
     {
-        (void)vertexShader;
-
         InputLayout *layout = new InputLayout();
 
         int total_attribute_array_size = 0;

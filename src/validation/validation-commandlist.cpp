@@ -31,11 +31,10 @@
 namespace nvrhi::validation
 {
 
-    CommandListWrapper::CommandListWrapper(DeviceWrapper* device, ICommandList* commandList, bool isImmediate, CommandQueue queueType)
+    CommandListWrapper::CommandListWrapper(DeviceWrapper* device, ICommandList* commandList, CommandQueue queueType)
         : m_CommandList(commandList)
         , m_Device(device)
         , m_MessageCallback(device->getMessageCallback())
-        , m_IsImmediate(isImmediate)
         , m_type(queueType)
     {
     }
@@ -141,29 +140,11 @@ namespace nvrhi::validation
             error("Cannot open a command list that is already open");
             return;
         case CommandListState::CLOSED:
-            if (m_IsImmediate)
-            {
-                error("An immediate command list cannot be abandoned and must be executed before it is re-opened");
-                return;
-            }
-            else
-            {
-                warning("A command list should be executed before it is reopened");
-                break;
-            }
+            warning("A command list should be executed before it is reopened");
+            break;
         case CommandListState::INITIAL:
         default:
             break;
-        }
-
-        if (m_IsImmediate)
-        {
-            if (++m_Device->m_NumOpenImmediateCommandLists > 1)
-            {
-                error("Two or more immediate command lists cannot be open at the same time");
-                --m_Device->m_NumOpenImmediateCommandLists;
-                return;
-            }
         }
 
         m_CommandList->open();
@@ -187,11 +168,6 @@ namespace nvrhi::validation
         case CommandListState::OPEN:
         default:
             break;
-        }
-
-        if (m_IsImmediate)
-        {
-            --m_Device->m_NumOpenImmediateCommandLists;
         }
 
         m_CommandList->close();

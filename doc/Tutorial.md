@@ -6,18 +6,7 @@ This tutorial provides a walk-through of the process of integrating NVRHI into a
 
 ### Creating the Device
 
-The first step after we include the NVRHI headers and libraries into your project is to create a device wrapper. Assuming the underlying device, context, queues, etc. have been initialized, the NVRHI wrapper can be created using one of the following snippets - they cover different graphics APIs.
-
-#### Direct3D 11
-```c++
-#include <nvrhi/d3d11.h>
-...
-nvrhi::d3d11::DeviceDesc deviceDesc;
-deviceDesc.messageCallback = g_MyMessageCallback;
-deviceDesc.context = d3d11DeviceContext;
-
-nvrhi::DeviceHandle nvrhiDevice = nvrhi::d3d11::createDevice(deviceDesc);
-```
+The first step after we include the NVRHI headers and libraries into your project is to create a device wrapper. Assuming the underlying device and queues have been initialized, the NVRHI wrapper can be created using one of the following snippets for Direct3D 12 or Vulkan.
 
 #### Direct3D 12
 
@@ -78,7 +67,7 @@ auto textureDesc = nvrhi::TextureDesc()
     .setIsRenderTarget(true)
     .setDebugName("Swap Chain Image");
 
-// In this line, <type> depends on the GAPI and should be one of: D3D11_Resource, D3D12_Resource, VK_Image.
+// In this line, <type> depends on the GAPI and should be D3D12_Resource or VK_Image.
 nvrhi::TextureHandle swapChainTexture = nvrhiDevice->createHandleForNativeTexture(nvrhi::ObjectTypes::<type>, nativeTextureOrImage, textureDesc);
 ```
 
@@ -91,7 +80,7 @@ auto framebufferDesc = nvrhi::FramebufferDesc()
 nvrhi::FramebufferHandle framebuffer = nvrhiDevice->createFramebuffer(framebufferDesc);
 ```
 
-On D3D12 and Vulkan, multiple swap chain textures and explicit access synchronization is necessary; this is out of scope for this article, and working implementations can be found in the `DeviceManager` classes in Donut: [D3D11](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/dx11/DeviceManager_DX11.cpp), [D3D12](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/dx12/DeviceManager_DX12.cpp), [Vulkan](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/vulkan/DeviceManager_VK.cpp).
+On D3D12 and Vulkan, multiple swap chain textures and explicit access synchronization are necessary; this is out of scope for this article, and working implementations can be found in the `DeviceManager` classes in Donut: [D3D12](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/dx12/DeviceManager_DX12.cpp), [Vulkan](https://github.com/NVIDIA-RTX/Donut/blob/main/src/app/vulkan/DeviceManager_VK.cpp).
 
 ### Creating a Graphics Pipeline
 
@@ -127,7 +116,7 @@ nvrhi::VertexAttributeDesc attributes[] = {
 };
 
 nvrhi::InputLayoutHandle inputLayout = nvrhiDevice->createInputLayout(
-    attributes, uint32_t(std::size(attributes)), vertexShader);
+    attributes, uint32_t(std::size(attributes)));
 
 nvrhi::ShaderHandle pixelShader = nvrhiDevice->createShader(
     nvrhi::ShaderDesc().setShaderType(nvrhi::ShaderType::Pixel),

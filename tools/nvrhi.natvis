@@ -165,56 +165,6 @@
     </Type>
 
 
-    <Type Name="nvrhi::d3d11::Buffer">
-        <DisplayString>{desc}</DisplayString>
-    </Type>
-    <Type Name="nvrhi::d3d11::Texture">
-        <DisplayString>{desc}</DisplayString>
-    </Type>
-    <Type Name="nvrhi::d3d11::StagingTexture">
-        <DisplayString>Staging {desc}</DisplayString>
-    </Type>
-    <Type Name="nvrhi::d3d11::Sampler">
-        <DisplayString>{desc}</DisplayString>
-        <Expand>
-            <ExpandedItem>desc</ExpandedItem>
-        </Expand>
-    </Type>
-    <Type Name="nvrhi::d3d11::Shader">
-        <DisplayString>{desc}</DisplayString>
-    </Type>
-    <Type Name="nvrhi::d3d11::Framebuffer">
-        <DisplayString>{framebufferInfo}</DisplayString>
-        <Expand>
-            <ExpandedItem>desc</ExpandedItem>
-        </Expand>
-    </Type>
-    <Type Name="nvrhi::d3d11::BindingSet">
-        <DisplayString>{desc}</DisplayString>
-        <Expand>
-            <ExpandedItem>desc</ExpandedItem>
-        </Expand>
-    </Type>
-    <Type Name="nvrhi::d3d11::BindingLayout">
-        <DisplayString>{desc}</DisplayString>
-        <Expand>
-            <ExpandedItem>desc</ExpandedItem>
-        </Expand>
-    </Type>
-    <Type Name="nvrhi::d3d11::GraphicsPipeline">
-        <DisplayString>{desc}</DisplayString>
-        <Expand>
-            <ExpandedItem>desc</ExpandedItem>
-        </Expand>
-    </Type>
-    <Type Name="nvrhi::d3d11::ComputePipeline">
-        <DisplayString>{desc}</DisplayString>
-        <Expand>
-            <ExpandedItem>desc</ExpandedItem>
-        </Expand>
-    </Type>
-
-
     <Type Name="nvrhi::d3d12::Heap">
         <DisplayString>{desc}</DisplayString>
     </Type>

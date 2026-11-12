@@ -4,7 +4,7 @@
 
 ## Introduction
 
-NVRHI (**NV**IDIA **R**endering **H**ardware **I**nterface) is a library that implements a common abstraction layer over multiple graphics APIs (GAPIs): Direct3D 11, Direct3D 12, and Vulkan 1.3. It works on Windows and Linux (x64 and ARM64).
+NVRHI (**NV**IDIA **R**endering **H**ardware **I**nterface) is a library that implements a common abstraction layer over Direct3D 12 and Vulkan 1.3. It works on Windows and Linux (x64 and ARM64).
 
 Key features:
 
@@ -63,7 +63,6 @@ To include NVRHI into a CMake project as static libraries:
 2. Add a `add_subdirectory(nvrhi)` directive to the parent CMakeLists.txt.
 3. Add dependencies to the necessary targets: 
 	* `nvrhi` for the interface headers, common utilities, and validation;
-	* `nvrhi_d3d11` for DX11 (enabled when `NVRHI_WITH_DX11` is `ON`);
 	* `nvrhi_d3d12` for DX12 (enabled when `NVRHI_WITH_DX12` is `ON`); and
 	* `nvrhi_vk` for Vulkan (enabled when `NVRHI_WITH_VULKAN` is `ON`).
 
@@ -74,6 +73,14 @@ To build NVRHI as a shared library (DLL or .so):
 	* Set the `NVRHI_BUILD_SHARED` variable to `ON`.
 	* Make sure to set the target platform to a 64-bit one. 32-bit builds are not supported.
 3. Build and install as normal.
+
+### Migrating from Direct3D 11
+
+The Direct3D 11 backend, `nvrhi_d3d11` target, and `<nvrhi/d3d11.h>` header have been removed. Applications must use the Direct3D 12 or Vulkan backend. Remove dependencies on `nvrhi_d3d11` and replace D3D11 device creation and native-resource wrapping with the chosen backend's equivalents.
+
+An explicit `NVRHI_WITH_DX11=OFF` remains accepted for existing build configurations. Setting `NVRHI_WITH_DX11=ON` produces a configuration error. Older Donut versions that still include a DX11 device manager must also configure `DONUT_WITH_DX11=OFF` and migrate their calls to the updated NVRHI API.
+
+The D3D11 API selector and native object identifiers have also been removed, along with `SharedResourceFlags::Shared_NTHandle`, `CommandListParameters::enableImmediateExecution`, and its setter. Remove uses of these declarations; command lists must always be explicitly submitted. `IDevice::createInputLayout` now takes only the vertex attributes and attribute count, so remove the shader argument from existing calls. Rebuild NVRHI and its consumers together because these changes affect the public API and ABI. The numeric values of the remaining graphics API selectors and shared-resource flags are unchanged.
 
 ### Configuring the Vulkan and DirectX header libraries
 
@@ -96,7 +103,7 @@ See the [programming guide](doc/ProgrammingGuide.md), the [tutorial](doc/Tutoria
 
 ## NVAPI Support
 
-NVRHI includes optional support for certain DX11 and DX12 extensions available through the NVAPI library. The library is not distributed with NVRHI but is available separately [here](https://developer.nvidia.com/nvapi).
+NVRHI includes optional support for certain DX12 extensions available through the NVAPI library. The library is not distributed with NVRHI but is available separately [here](https://developer.nvidia.com/nvapi).
 
 To enable NVAPI support, extract the NVAPI SDK into the `nvapi` subfolder of your main project and set the `NVRHI_WITH_NVAPI` CMake variable to `ON`.
 

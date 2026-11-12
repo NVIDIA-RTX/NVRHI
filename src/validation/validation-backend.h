@@ -29,16 +29,6 @@ namespace nvrhi::validation
 {
     class DeviceWrapper;
 
-    struct Range
-    {
-        uint32_t min = ~0u;
-        uint32_t max = 0;
-
-        void add(uint32_t item);
-        [[nodiscard]] bool empty() const;
-        [[nodiscard]] bool overlapsWith(const Range& other) const;
-    };
-
     enum class GraphicsResourceType : uint32_t
     {
         SRV,
@@ -93,13 +83,8 @@ namespace nvrhi::validation
     {
         BindingLocationSet locations;
         uint32_t numVolatileCBs = 0;
-        Range rangeSRV;
-        Range rangeSampler;
-        Range rangeUAV;
-        Range rangeCB;
 
         [[nodiscard]] bool any() const;
-        [[nodiscard]] bool overlapsWith(const BindingSummary& other) const;
     };
     
     std::ostream& operator<<(std::ostream& os, const BindingLocationSet& set);
@@ -154,13 +139,12 @@ namespace nvrhi::validation
     public:
         friend class DeviceWrapper;
 
-        CommandListWrapper(DeviceWrapper* device, ICommandList* commandList, bool isImmediate, CommandQueue queueType);
+        CommandListWrapper(DeviceWrapper* device, ICommandList* commandList, CommandQueue queueType);
 
     protected:
         CommandListHandle m_CommandList;
         RefCountPtr<DeviceWrapper> m_Device;
         IMessageCallback* m_MessageCallback;
-        bool m_IsImmediate;
         CommandQueue m_type;
 
         CommandListState m_State = CommandListState::INITIAL;
@@ -294,7 +278,6 @@ namespace nvrhi::validation
     protected:
         DeviceHandle m_Device;
         IMessageCallback* m_MessageCallback;
-        std::atomic<unsigned int> m_NumOpenImmediateCommandLists = 0;
 
         void error(const std::string& messageText) const;
         void warning(const std::string& messageText) const;
@@ -347,7 +330,7 @@ namespace nvrhi::validation
 
         SamplerHandle createSampler(const SamplerDesc& d) override;
 
-        InputLayoutHandle createInputLayout(const VertexAttributeDesc* d, uint32_t attributeCount, IShader* vertexShader) override;
+        InputLayoutHandle createInputLayout(const VertexAttributeDesc* d, uint32_t attributeCount) override;
 
         // event queries
         EventQueryHandle createEventQuery() override;

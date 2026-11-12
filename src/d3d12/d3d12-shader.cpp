@@ -231,11 +231,8 @@ namespace nvrhi::d3d12
         return ShaderLibraryHandle::Create(shaderLibrary);
     }
     
-    InputLayoutHandle Device::createInputLayout(const VertexAttributeDesc * d, uint32_t attributeCount, IShader* vertexShader)
+    InputLayoutHandle Device::createInputLayout(const VertexAttributeDesc * d, uint32_t attributeCount)
     {
-        // The shader is not needed here, there are no separate IL objects in DX12
-        (void)vertexShader;
-
         InputLayout* layout = new InputLayout();
         layout->attributes.resize(attributeCount);
 

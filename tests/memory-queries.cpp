@@ -1,4 +1,4 @@
-// Exercises optional queries on real backends, without windows or submitted GPU work.
+// Exercises optional queries and validation on real backends without windows.
 #include <nvrhi/nvrhi.h>
 #include <nvrhi/validation.h>
 #include <cstdio>
@@ -11,11 +11,6 @@
 #if TEST_D3D12
 #include <nvrhi/d3d12.h>
 #include <d3d12sdklayers.h>
-#endif
-#if TEST_D3D11
-#include <nvrhi/d3d11.h>
-#endif
-#if TEST_D3D11 || TEST_D3D12
 #include <wrl/client.h>
 #endif
 #if TEST_VULKAN
@@ -95,6 +90,14 @@ static void runD3D12BufferQueries(nvrhi::IDevice* device)
 
 static void runQueries(nvrhi::IDevice* device)
 {
+    const auto attribute = nvrhi::VertexAttributeDesc().setName("POSITION")
+        .setFormat(nvrhi::Format::RG32_FLOAT).setElementStride(8);
+    auto inputLayout = device->createInputLayout(&attribute, 1);
+    check(inputLayout && inputLayout->getNumAttributes() == 1, "create input layout without a shader argument");
+    const auto* storedAttribute = inputLayout->getAttributeDesc(0);
+    check(storedAttribute && storedAttribute->name == attribute.name && storedAttribute->format == attribute.format,
+        "input layout preserves its vertex attribute");
+
     nvrhi::MemoryRequirements requirements{123, 456};
     auto resource = nvrhi::ResourceHandle::Create(new nvrhi::RefCounter<nvrhi::IResource>());
     check(!resource->queryMemoryRequirements(requirements), "default resource query is unavailable");
@@ -103,24 +106,19 @@ static void runQueries(nvrhi::IDevice* device)
     check(requirements.size == 123 && requirements.alignment == 456, "unsupported resource preserves output");
     std::printf("Default and non-memory resource: unavailable, preserved=(%" PRIu64 ",%" PRIu64 ")\n",
         requirements.size, requirements.alignment);
-    const bool supported = device->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11;
-    if (supported)
+    for (uint64_t size : {1024ull, 131072ull})
     {
-        for (uint64_t size : {1024ull, 131072ull})
-        {
-            auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(size));
-            check(buffer != nullptr, "create buffer");
-            nvrhi::IResource* base = buffer;
-            check(base->queryMemoryRequirements(requirements), "buffer query via IResource dispatch");
-            auto legacy = device->getBufferMemoryRequirements(buffer);
-            check(requirements.size >= size && requirements.size == legacy.size &&
-                requirements.alignment == legacy.alignment, "backing-buffer requirements");
-            std::printf("Buffer: bytes=%" PRIu64 " requirements=(%" PRIu64 ",%" PRIu64 ") legacy=(%" PRIu64 ",%" PRIu64 ")\n",
-                size, requirements.size, requirements.alignment, legacy.size, legacy.alignment);
-        }
+        auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(size));
+        check(buffer != nullptr, "create buffer");
+        nvrhi::IResource* base = buffer;
+        check(base->queryMemoryRequirements(requirements), "buffer query via IResource dispatch");
+        auto legacy = device->getBufferMemoryRequirements(buffer);
+        check(requirements.size >= size && requirements.size == legacy.size &&
+            requirements.alignment == legacy.alignment, "backing-buffer requirements");
+        std::printf("Buffer: bytes=%" PRIu64 " requirements=(%" PRIu64 ",%" PRIu64 ") legacy=(%" PRIu64 ",%" PRIu64 ")\n",
+            size, requirements.size, requirements.alignment, legacy.size, legacy.alignment);
     }
 
-    if (supported)
     {
         auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(131072).setIsVirtual(true));
         check(buffer && buffer->queryMemoryRequirements(requirements), "unbound virtual buffer query");
@@ -158,8 +156,7 @@ static void runQueries(nvrhi::IDevice* device)
     desc.topLevelMaxInstances = 8;
     desc.buildFlags = nvrhi::rt::AccelStructBuildFlags::AllowUpdate;
     nvrhi::rt::AccelStructPrebuildInfo info{123, 456, 789};
-    const bool prebuildSupported = device->getGraphicsAPI() != nvrhi::GraphicsAPI::D3D11 &&
-        device->queryFeatureSupport(nvrhi::Feature::RayTracingAccelStruct);
+    const bool prebuildSupported = device->queryFeatureSupport(nvrhi::Feature::RayTracingAccelStruct);
     if (prebuildSupported)
     {
         check(device->queryTopLevelAccelStructPrebuildInfo(desc, 4, info), "prebuild capability");
@@ -234,6 +231,61 @@ static void runQueries(nvrhi::IDevice* device)
     }
 }
 
+#if TEST_VALIDATION
+static void runValidationChecks(nvrhi::IDevice* device, Messages& messages)
+{
+    const unsigned initialErrors = messages.errors;
+    auto expectError = [&messages](auto operation, const char* description)
+    {
+        const unsigned before = messages.errors;
+        operation();
+        check(messages.errors == before + 1, description);
+        messages.errors = before;
+    };
+
+    {
+        auto first = device->createCommandList();
+        auto second = device->createCommandList();
+        check(first && second, "create independent command lists");
+        expectError([&] { first->close(); }, "close-before-open remains invalid");
+        first->open();
+        second->open();
+        check(messages.errors == initialErrors, "multiple command lists can be open independently");
+        expectError([&] { first->open(); }, "double-open remains invalid");
+        expectError([&] { device->executeCommandList(first); }, "submitting an open list remains invalid");
+        first->close();
+        second->close();
+        first->open();
+        first->close();
+        check(messages.errors == initialErrors, "closed command list can be rerecorded before submission");
+        device->executeCommandList(first);
+        device->executeCommandList(second);
+        device->waitForIdle();
+    }
+
+    auto layoutDesc = nvrhi::BindingLayoutDesc().setVisibility(nvrhi::ShaderType::Compute)
+        .setRegisterSpaceAndDescriptorSet(1).addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(0));
+    auto layout = device->createBindingLayout(layoutDesc);
+    auto buffer = device->createBuffer(nvrhi::BufferDesc().setByteSize(256).setCanHaveRawViews(true));
+    check(layout && buffer, "create nonzero register-space resources");
+    auto bindingSet = device->createBindingSet(
+        nvrhi::BindingSetDesc().addItem(nvrhi::BindingSetItem::RawBuffer_SRV(0, buffer)), layout);
+    check(bindingSet != nullptr, "binding set matches its nonzero register-space layout");
+
+    layoutDesc.addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(0));
+    expectError([&] { check(!device->createBindingLayout(layoutDesc), "reject duplicate bindings"); },
+        "exact duplicate binding validation remains active");
+
+    auto volatileLayout = nvrhi::BindingLayoutDesc().setVisibility(nvrhi::ShaderType::Compute);
+    for (uint32_t slot = 0; slot <= nvrhi::c_MaxVolatileConstantBuffersPerLayout; ++slot)
+        volatileLayout.addItem(nvrhi::BindingLayoutItem::VolatileConstantBuffer(slot));
+    expectError([&] { check(!device->createBindingLayout(volatileLayout), "reject too many volatile buffers"); },
+        "volatile constant buffer limit remains active");
+    check(messages.errors == initialErrors, "no unexpected validation errors");
+    std::printf("Validation: independent command lists, register spaces and invalid usage verified\n");
+}
+#endif
+
 static void runDevice(nvrhi::IDevice* device, Messages& messages)
 {
     check(device != nullptr, "NVRHI device");
@@ -243,6 +295,7 @@ static void runDevice(nvrhi::IDevice* device, Messages& messages)
     auto validation = nvrhi::validation::createValidationLayer(device);
     std::printf("Device path: validation\n");
     runQueries(validation);
+    runValidationChecks(validation, messages);
 #endif
     device->waitForIdle();
     device->runGarbageCollection();
@@ -253,24 +306,9 @@ int main(int argc, char** argv)
 {
     try
     {
-        check(argc == 2, "specify d3d11, d3d12 or vulkan");
+        check(argc == 2, "specify d3d12 or vulkan");
         const std::string backend = argv[1];
         Messages messages;
-#if TEST_D3D11
-        if (backend == "d3d11")
-        {
-            Microsoft::WRL::ComPtr<ID3D11Device> native;
-            Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-            check(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
-                D3D11_SDK_VERSION, &native, nullptr, &context)), "D3D11 WARP device");
-            nvrhi::d3d11::DeviceDesc desc;
-            desc.context = context.Get();
-            desc.messageCallback = &messages;
-            auto device = nvrhi::d3d11::createDevice(desc);
-            runDevice(device, messages);
-        }
-        else
-#endif
 #if TEST_D3D12
         if (backend == "d3d12")
         {
