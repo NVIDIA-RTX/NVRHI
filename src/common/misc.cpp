@@ -66,8 +66,9 @@ namespace nvrhi
         }
         else
         {
-            int lastMipLevelPlusOne = std::min(baseMipLevel + numMipLevels, desc.mipLevels);
-            ret.numMipLevels = MipLevel(std::max(0u, lastMipLevelPlusOne - baseMipLevel));
+            // 64-bit sum: baseMipLevel + AllMipLevels must not wrap around
+            uint64_t lastMipLevelPlusOne = std::min(uint64_t(baseMipLevel) + numMipLevels, uint64_t(desc.mipLevels));
+            ret.numMipLevels = lastMipLevelPlusOne > baseMipLevel ? MipLevel(lastMipLevelPlusOne - baseMipLevel) : 0;
         }
 
         switch (desc.dimension)  // NOLINT(clang-diagnostic-switch-enum)
@@ -78,8 +79,8 @@ namespace nvrhi
         case TextureDimension::TextureCubeArray:
         case TextureDimension::Texture2DMSArray: {
             ret.baseArraySlice = baseArraySlice;
-            int lastArraySlicePlusOne = std::min(baseArraySlice + numArraySlices, desc.arraySize);
-            ret.numArraySlices = ArraySlice(std::max(0u, lastArraySlicePlusOne - baseArraySlice));
+            uint64_t lastArraySlicePlusOne = std::min(uint64_t(baseArraySlice) + numArraySlices, uint64_t(desc.arraySize));
+            ret.numArraySlices = lastArraySlicePlusOne > baseArraySlice ? ArraySlice(lastArraySlicePlusOne - baseArraySlice) : 0;
             break;
         }
         default: 
