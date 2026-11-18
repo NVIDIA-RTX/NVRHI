@@ -169,7 +169,10 @@ namespace nvrhi::d3d11
 
         const bool updateFramebuffer = !m_CurrentGraphicsStateValid || m_CurrentFramebuffer != state.framebuffer;
         const bool updatePipeline = !m_CurrentGraphicsStateValid || m_CurrentGraphicsPipeline != state.pipeline;
-        const bool updateBindings = updateFramebuffer || arraysAreDifferent(m_CurrentBindings, state.bindings);
+        // Also when the pipeline has other stages: the binding sets go to the stages of the pipeline
+        // that binds them, so a geometry shader added with the same sets would find its slots empty.
+        const bool updateBindings = updateFramebuffer || arraysAreDifferent(m_CurrentBindings, state.bindings)
+            || checked_cast<GraphicsPipeline*>(m_CurrentGraphicsPipeline.Get())->shaderMask != pipeline->shaderMask;
 
         const bool updateViewports = !m_CurrentGraphicsStateValid ||
             arraysAreDifferent(m_CurrentViewports.viewports, state.viewport.viewports) ||
