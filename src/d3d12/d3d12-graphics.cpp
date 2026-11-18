@@ -657,10 +657,36 @@ namespace nvrhi::d3d12
         return ret;
     }
     
+    static D3D12_LOGIC_OP convertLogicOp(LogicOp value)
+    {
+        switch (value)
+        {
+        case LogicOp::Clear: return D3D12_LOGIC_OP_CLEAR;
+        case LogicOp::And: return D3D12_LOGIC_OP_AND;
+        case LogicOp::AndReverse: return D3D12_LOGIC_OP_AND_REVERSE;
+        case LogicOp::Copy: return D3D12_LOGIC_OP_COPY;
+        case LogicOp::AndInverted: return D3D12_LOGIC_OP_AND_INVERTED;
+        case LogicOp::NoOp: return D3D12_LOGIC_OP_NOOP;
+        case LogicOp::Xor: return D3D12_LOGIC_OP_XOR;
+        case LogicOp::Or: return D3D12_LOGIC_OP_OR;
+        case LogicOp::Nor: return D3D12_LOGIC_OP_NOR;
+        case LogicOp::Equivalent: return D3D12_LOGIC_OP_EQUIV;
+        case LogicOp::Invert: return D3D12_LOGIC_OP_INVERT;
+        case LogicOp::OrReverse: return D3D12_LOGIC_OP_OR_REVERSE;
+        case LogicOp::CopyInverted: return D3D12_LOGIC_OP_COPY_INVERTED;
+        case LogicOp::OrInverted: return D3D12_LOGIC_OP_OR_INVERTED;
+        case LogicOp::Nand: return D3D12_LOGIC_OP_NAND;
+        case LogicOp::Set: return D3D12_LOGIC_OP_SET;
+        default: return D3D12_LOGIC_OP_COPY;
+        }
+    }
+
     void TranslateBlendState(const BlendState& inState, D3D12_BLEND_DESC& outState)
     {
         outState.AlphaToCoverageEnable = inState.alphaToCoverageEnable;
-        outState.IndependentBlendEnable = true;
+        // D3D12 takes a logic operation from the first target's description only, without
+        // independent blending.
+        outState.IndependentBlendEnable = !inState.logicOpEnable;
 
         for (uint32_t i = 0; i < c_MaxRenderTargets; i++)
         {
@@ -675,6 +701,13 @@ namespace nvrhi::d3d12
             dst.DestBlendAlpha = convertBlendValue(src.destBlendAlpha);
             dst.BlendOpAlpha = convertBlendOp(src.blendOpAlpha);
             dst.RenderTargetWriteMask = (D3D12_COLOR_WRITE_ENABLE)src.colorWriteMask;
+            // Blending and a logic operation can't be on together (Vulkan ignores blending then).
+            if (inState.logicOpEnable)
+            {
+                dst.BlendEnable = FALSE;
+                dst.LogicOpEnable = TRUE;
+                dst.LogicOp = convertLogicOp(inState.logicOp);
+            }
         }
     }
 
