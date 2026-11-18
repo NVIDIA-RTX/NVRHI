@@ -1792,6 +1792,10 @@ namespace nvrhi
             PreferFastBuild = 8,
             MinimizeMemory = 0x10,
             PerformUpdate = 0x20,
+            // Vulkan only (VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR): hit shaders can
+            // read the vertex positions of the triangles they hit (VK_KHR_ray_tracing_position_fetch,
+            // Feature::RayTracingPositionFetch). D3D12 ignores it.
+            AllowDataAccess = 0x40,
 
             // Removes the errors or warnings that NVRHI validation layer issues when a TLAS
             // includes an instance that points at a NULL BLAS or has a zero instance mask.
