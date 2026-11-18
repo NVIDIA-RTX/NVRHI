@@ -205,6 +205,22 @@ namespace nvrhi
             setTextureState(desc.shadingRateAttachment.texture, desc.shadingRateAttachment.subresources,
                 nvrhi::ResourceStates::ShadingRateSurface);
         }
+
+        // Resolve attachments (Vulkan): written by the render pass as attachments.
+        if (getDevice()->getGraphicsAPI() == GraphicsAPI::VULKAN)
+        {
+            for (const auto& attachment : desc.colorResolveAttachments)
+            {
+                if (attachment.valid())
+                    setTextureState(attachment.texture, attachment.subresources, ResourceStates::RenderTarget);
+            }
+
+            if (desc.depthResolveAttachment.valid() && desc.depthResolveMode != ResolveMode::None)
+            {
+                setTextureState(desc.depthResolveAttachment.texture, desc.depthResolveAttachment.subresources,
+                    ResourceStates::DepthWrite);
+            }
+        }
     }
     
     size_t coopvec::getDataTypeSize(coopvec::DataType type)

@@ -1382,11 +1382,30 @@ namespace nvrhi
         [[nodiscard]] bool valid() const { return texture != nullptr; }
     };
 
+    // How a multisampled depth attachment is resolved into its resolve attachment
+    // (FramebufferDesc::depthResolveMode), as Vulkan's VkResolveModeFlagBits.
+    enum class ResolveMode : uint8_t
+    {
+        None,
+        SampleZero,
+        Average,
+        Min,
+        Max
+    };
+
     struct FramebufferDesc
     {
         static_vector<FramebufferAttachment, c_MaxRenderTargets> colorAttachments;
         FramebufferAttachment depthAttachment;
         FramebufferAttachment shadingRateAttachment;
+        // Vulkan only (the D3D backends ignore them): single-sampled textures that the
+        // multisampled attachments are resolved into whenever a render pass on the framebuffer
+        // ends, by the render pass itself (VkRenderingAttachmentInfo's resolve). Color attachment i
+        // resolves into colorResolveAttachments[i] (averaged; sample 0 for integer formats) where
+        // that is valid; the depth attachment into depthResolveAttachment, by depthResolveMode.
+        static_vector<FramebufferAttachment, c_MaxRenderTargets> colorResolveAttachments;
+        FramebufferAttachment depthResolveAttachment;
+        ResolveMode depthResolveMode = ResolveMode::None;
 
         FramebufferDesc& addColorAttachment(const FramebufferAttachment& a) { colorAttachments.push_back(a); return *this; }
         FramebufferDesc& addColorAttachment(ITexture* texture) { colorAttachments.push_back(FramebufferAttachment().setTexture(texture)); return *this; }
@@ -1397,6 +1416,10 @@ namespace nvrhi
         FramebufferDesc& setShadingRateAttachment(const FramebufferAttachment& d) { shadingRateAttachment = d; return *this; }
         FramebufferDesc& setShadingRateAttachment(ITexture* texture) { shadingRateAttachment = FramebufferAttachment().setTexture(texture); return *this; }
         FramebufferDesc& setShadingRateAttachment(ITexture* texture, TextureSubresourceSet subresources) { shadingRateAttachment = FramebufferAttachment().setTexture(texture).setSubresources(subresources); return *this; }
+        FramebufferDesc& addColorResolveAttachment(const FramebufferAttachment& a) { colorResolveAttachments.push_back(a); return *this; }
+        FramebufferDesc& addColorResolveAttachment(ITexture* texture) { colorResolveAttachments.push_back(FramebufferAttachment().setTexture(texture)); return *this; }
+        FramebufferDesc& setDepthResolveAttachment(const FramebufferAttachment& d, ResolveMode mode) { depthResolveAttachment = d; depthResolveMode = mode; return *this; }
+        FramebufferDesc& setDepthResolveAttachment(ITexture* texture, ResolveMode mode) { depthResolveAttachment = FramebufferAttachment().setTexture(texture); depthResolveMode = mode; return *this; }
     };
 
     // Describes the parameters of a framebuffer that can be used to determine if a given framebuffer
