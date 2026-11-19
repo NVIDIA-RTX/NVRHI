@@ -51,7 +51,7 @@ namespace nvrhi::vulkan
 
             // The upload manager buffers are used in buildTopLevelAccelStruct to store instance data, and SBT for shader entries
             desc.isAccelStructBuildInput = m_Device->queryFeatureSupport(Feature::RayTracingAccelStruct);
-            desc.isShaderBindingTable = m_Device->queryFeatureSupport(Feature::RayTracingAccelStruct);
+            desc.isShaderBindingTable = m_Device->queryFeatureSupport(Feature::RayTracingPipeline);
 
             chunk->buffer = m_Device->createBuffer(desc);
             chunk->mappedMemory = m_Device->mapBuffer(chunk->buffer, CpuAccessMode::Write);

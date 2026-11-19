@@ -216,10 +216,18 @@ namespace nvrhi::vulkan
         std::vector<vk::ImageMemoryBarrier2> imageBarriers;
         std::vector<vk::BufferMemoryBarrier2> bufferBarriers;
 
+        // Some states (AccelStructRead) include the ray tracing shader stage, which barriers
+        // must not use unless the ray tracing pipeline is enabled, e.g. with ray queries only.
+        const vk::PipelineStageFlags2 unsupportedStages = m_Context.extensions.KHR_ray_tracing_pipeline
+            ? vk::PipelineStageFlags2()
+            : vk::PipelineStageFlags2(vk::PipelineStageFlagBits2::eRayTracingShaderKHR);
+
         for (const TextureBarrier& barrier : m_StateTracker.getTextureBarriers())
         {
             ResourceStateMapping before = convertResourceState(barrier.stateBefore, true);
             ResourceStateMapping after = convertResourceState(barrier.stateAfter, true);
+            before.stageFlags &= ~unsupportedStages;
+            after.stageFlags &= ~unsupportedStages;
 
             assert(after.imageLayout != vk::ImageLayout::eUndefined);
 
@@ -266,6 +274,8 @@ namespace nvrhi::vulkan
         {
             ResourceStateMapping before = convertResourceState(barrier.stateBefore, false);
             ResourceStateMapping after = convertResourceState(barrier.stateAfter, false);
+            before.stageFlags &= ~unsupportedStages;
+            after.stageFlags &= ~unsupportedStages;
 
             Buffer* buffer = static_cast<Buffer*>(barrier.buffer);
 
