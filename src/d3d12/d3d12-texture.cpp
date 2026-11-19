@@ -524,7 +524,7 @@ namespace nvrhi::d3d12
 
         D3D12_RESOURCE_DESC1 resourceDesc1{};
         RefCountPtr<ID3D12Resource2> resource2;
-        if (pResource->QueryInterface(IID_PPV_ARGS(&resource2)))
+        if (SUCCEEDED(pResource->QueryInterface(IID_PPV_ARGS(&resource2))))
             resourceDesc1 = resource2->GetDesc1();
         else
             *reinterpret_cast<D3D12_RESOURCE_DESC*>(&resourceDesc1) = pResource->GetDesc();
