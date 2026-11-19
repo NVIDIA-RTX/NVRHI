@@ -280,7 +280,7 @@ namespace nvrhi::vulkan
             vk::AccessFlagBits2::eMemoryRead,
             vk::ImageLayout::ePresentSrcKHR },
         { ResourceStates::AccelStructRead,
-            vk::PipelineStageFlagBits2::eRayTracingShaderKHR | vk::PipelineStageFlagBits2::eComputeShader,
+            vk::PipelineStageFlagBits2::eAllCommands, // Could be an RT pipeline or other shaders
             vk::AccessFlagBits2::eAccelerationStructureReadKHR,
             vk::ImageLayout::eUndefined },
         { ResourceStates::AccelStructWrite,
