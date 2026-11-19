@@ -289,7 +289,7 @@ namespace nvrhi::vulkan
             vk::ImageLayout::eUndefined },
         { ResourceStates::AccelStructBuildInput,
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
-            vk::AccessFlagBits2::eAccelerationStructureReadKHR,
+            vk::AccessFlagBits2::eShaderRead,
             vk::ImageLayout::eUndefined },
         { ResourceStates::AccelStructBuildBlas,
             vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR,
