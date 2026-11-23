@@ -22,3 +22,7 @@ if(WIN32 AND NVRHI_BUILD_SHARED)
 endif()
 get_property(memory_tests DIRECTORY PROPERTY TESTS)
 set_tests_properties(${memory_tests} PROPERTIES TIMEOUT 30)
+
+add_executable(nvrhi_texture_subresources texture-subresources.cpp)
+target_link_libraries(nvrhi_texture_subresources PRIVATE nvrhi)
+add_test(NAME texture_subresources COMMAND nvrhi_texture_subresources)
