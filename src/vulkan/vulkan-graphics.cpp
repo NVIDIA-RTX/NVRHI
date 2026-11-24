@@ -338,7 +338,9 @@ namespace nvrhi::vulkan
         
         // Conservative raster state
         auto conservativeRasterState = vk::PipelineRasterizationConservativeStateCreateInfoEXT()
-            .setConservativeRasterizationMode(vk::ConservativeRasterizationModeEXT::eOverestimate);
+            .setConservativeRasterizationMode(vk::ConservativeRasterizationModeEXT::eOverestimate)
+            .setExtraPrimitiveOverestimationSize(std::min(rasterState.conservativeRasterExtraOverestimation,
+                m_Context.conservativeRasterizationProperties.maxExtraPrimitiveOverestimationSize));
 		if (rasterState.conservativeRasterEnable)
 		{
 			rasterizer.setPNext(&conservativeRasterState);
