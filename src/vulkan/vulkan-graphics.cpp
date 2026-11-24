@@ -387,6 +387,19 @@ namespace nvrhi::vulkan
 
         pso->usesBlendConstants = blendState.usesConstantColor(uint32_t(fbinfo.colorFormats.size()));
 
+        // An advanced blend operation replaces the targets' color and alpha operations.
+        auto colorBlendAdvanced = vk::PipelineColorBlendAdvancedStateCreateInfoEXT()
+            .setSrcPremultiplied(blendState.advancedSrcPremultiplied)
+            .setDstPremultiplied(blendState.advancedDstPremultiplied)
+            .setBlendOverlap(vk::BlendOverlapEXT(blendState.advancedBlendOverlap));
+        if (blendState.advancedBlendOp >= 0)
+        {
+            const auto advancedOp = vk::BlendOp(VK_BLEND_OP_ZERO_EXT + blendState.advancedBlendOp);
+            for (vk::PipelineColorBlendAttachmentState& attachment : colorBlendAttachments)
+                attachment.setColorBlendOp(advancedOp).setAlphaBlendOp(advancedOp);
+            colorBlend.setPNext(&colorBlendAdvanced);
+        }
+
         static_vector<vk::DynamicState, 5> dynamicStates = {
             vk::DynamicState::eViewport,
             vk::DynamicState::eScissor
