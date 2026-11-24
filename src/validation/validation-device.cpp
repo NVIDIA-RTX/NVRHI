@@ -1492,6 +1492,8 @@ namespace nvrhi::validation
                     errorStream << "ResourceType::PushConstants is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
                     return false;
                 case ResourceType::RayTracingAccelStruct:
+                    if (m_Device->getGraphicsAPI() == GraphicsAPI::D3D12)
+                        break;
                     errorStream << "ResourceType::RayTracingAccelStruct is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
                     return false;
                 default:
