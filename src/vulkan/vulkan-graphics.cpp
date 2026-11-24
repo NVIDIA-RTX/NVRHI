@@ -81,6 +81,24 @@ namespace nvrhi::vulkan
                 .setStoreOp(vk::AttachmentStoreOp::eStore);
 
             fb->resources.push_back(rt.texture);
+
+            // Resolved into a single-sampled texture when the render pass ends.
+            if (i < desc.colorResolveAttachments.size() && desc.colorResolveAttachments[i].valid())
+            {
+                const auto& resolve = desc.colorResolveAttachments[i];
+                Texture* resolveTexture = checked_cast<Texture*>(resolve.texture);
+                TextureSubresourceSet resolveSubresources = resolve.subresources.resolve(resolveTexture->desc, true);
+                TextureDimension resolveDimension = getDimensionForFramebuffer(resolveTexture->desc.dimension, resolveSubresources.numArraySlices > 1);
+                const auto& resolveView = resolveTexture->getSubresourceView(resolveSubresources, resolveDimension, resolve.format, vk::ImageUsageFlagBits::eColorAttachment);
+
+                const FormatKind kind = getFormatInfo(t->desc.format).kind;
+                attachmentInfo
+                    .setResolveMode(kind == FormatKind::Integer ? vk::ResolveModeFlagBits::eSampleZero : vk::ResolveModeFlagBits::eAverage)
+                    .setResolveImageView(resolveView.view)
+                    .setResolveImageLayout(vk::ImageLayout::eColorAttachmentOptimal);
+
+                fb->resources.push_back(resolve.texture);
+            }
         }
 
         // add depth/stencil attachment if present
@@ -113,8 +131,33 @@ namespace nvrhi::vulkan
 
             if (getFormatInfo(texture->desc.format).hasStencil)
                 fb->stencilAttachment = fb->depthAttachment;
-                
+
             fb->resources.push_back(att.texture);
+
+            // Resolved into a single-sampled texture when the render pass ends (depth only).
+            if (desc.depthResolveAttachment.valid() && desc.depthResolveMode != ResolveMode::None)
+            {
+                const auto& resolve = desc.depthResolveAttachment;
+                Texture* resolveTexture = checked_cast<Texture*>(resolve.texture);
+                TextureSubresourceSet resolveSubresources = resolve.subresources.resolve(resolveTexture->desc, true);
+                TextureDimension resolveDimension = getDimensionForFramebuffer(resolveTexture->desc.dimension, resolveSubresources.numArraySlices > 1);
+                const auto& resolveView = resolveTexture->getSubresourceView(resolveSubresources, resolveDimension, resolve.format, vk::ImageUsageFlagBits::eDepthStencilAttachment);
+
+                vk::ResolveModeFlagBits mode = vk::ResolveModeFlagBits::eSampleZero;
+                switch (desc.depthResolveMode)  // NOLINT(clang-diagnostic-switch-enum)
+                {
+                case ResolveMode::Average: mode = vk::ResolveModeFlagBits::eAverage; break;
+                case ResolveMode::Min: mode = vk::ResolveModeFlagBits::eMin; break;
+                case ResolveMode::Max: mode = vk::ResolveModeFlagBits::eMax; break;
+                default: break;
+                }
+                fb->depthAttachment
+                    .setResolveMode(mode)
+                    .setResolveImageView(resolveView.view)
+                    .setResolveImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
+
+                fb->resources.push_back(resolve.texture);
+            }
         }
 
         // add VRS attachment
