@@ -1057,6 +1057,17 @@ namespace nvrhi::d3d12
 
             m_CurrentComputeVolatileCBs = newVolatileCBs;
         }
+        else if (m_EnableAutomaticBarriers)
+        {
+            // The same binding sets as before: their resources still need their states back after
+            // other uses (copies, clears), and their UAVs a barrier after the previous dispatch.
+            for (IBindingSet* _bindingSet : bindings)
+            {
+                if (_bindingSet && _bindingSet->getDesc() &&
+                    (m_BindingStatesDirty || checked_cast<BindingSet*>(_bindingSet)->hasUavBindings))
+                    setResourceStatesForBindingSet(_bindingSet);
+            }
+        }
 
         if (indirectParams && updateIndirectParams)
         {
@@ -1183,6 +1194,17 @@ namespace nvrhi::d3d12
             }
 
             m_CurrentGraphicsVolatileCBs = newVolatileCBs;
+        }
+        else if (m_EnableAutomaticBarriers)
+        {
+            // The same binding sets as before: their resources still need their states back after
+            // other uses (copies, clears), and their UAVs a barrier after the previous draw.
+            for (IBindingSet* _bindingSet : bindings)
+            {
+                if (_bindingSet && _bindingSet->getDesc() &&
+                    (m_BindingStatesDirty || checked_cast<BindingSet*>(_bindingSet)->hasUavBindings))
+                    setResourceStatesForBindingSet(_bindingSet);
+            }
         }
 
         if (indirectParams && updateIndirectParams)
