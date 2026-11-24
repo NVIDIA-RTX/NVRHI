@@ -42,7 +42,7 @@ namespace nvrhi::vulkan
         uint32_t blockY = y / formatInfo.blockSize;
         uint32_t blockZ = z;
 
-        return footprint.offset + (blockX + (blockY + blockZ * footprint.numRows) * footprint.rowPitch);
+        return footprint.offset + blockX * formatInfo.bytesPerBlock + (blockY + blockZ * footprint.numRows) * footprint.rowPitch;
     }
 
     size_t StagingTexture::computeCopyableFootprints()
