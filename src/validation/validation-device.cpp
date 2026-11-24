@@ -1477,13 +1477,11 @@ namespace nvrhi::validation
                 case ResourceType::RawBuffer_SRV:
                 case ResourceType::RawBuffer_UAV:
                 case ResourceType::ConstantBuffer:
+                case ResourceType::SamplerFeedbackTexture_UAV:
                     // Valid descriptors
                     break;
                 case ResourceType::Sampler:
                     errorStream << "ResourceType::Sampler is not allowed for BindlessLayoutDesc::LayoutType::MutableSrvUavCbv." << std::endl;
-                    return false;
-                case ResourceType::SamplerFeedbackTexture_UAV:
-                    errorStream << "ResourceType::SamplerFeedbackTexture_UAV is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
                     return false;
                 case ResourceType::VolatileConstantBuffer:
                     errorStream << "ResourceType::VolatileConstantBuffer is not allowed for bindless layouts with LayoutType::MutableSrvUavCbv." << std::endl;
